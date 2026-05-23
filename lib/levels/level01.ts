@@ -7,6 +7,7 @@ export const level01: LevelDef = {
   worldWidth: 2000,
   backdrop: "/4.png",
   playerSpawn: { x: 140 },
+  endTriggerX: 1960, // matches the end-marker visual at worldWidth - 40
   platforms: [
     { x: 460, dy: 90, w: 140, h: 14 },
     { x: 700, dy: 160, w: 140, h: 14 },

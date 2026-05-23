@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { EnemyDef, LevelDef, PlatformDef } from "@/lib/levels";
 import {
   type EnemyState,
+  type StealthKillTarget,
   findStealthKillTarget,
   isInVisionCone,
   killEnemy,
@@ -47,7 +48,22 @@ const TRACKED_KEYS = new Set([
   "space",
   "shift",
   "e",
+  "r",
 ]);
+
+// ===== Game loop tuning =====
+/** Frames of unbroken detection before the player respawns. */
+const RESPAWN_THRESHOLD = 50;
+/** Frames to fade to black during a respawn. */
+const FADE_OUT_FRAMES = 30;
+/** Frames to fade back in after reset. */
+const FADE_IN_FRAMES = 30;
+
+type Phase = "playing" | "respawning" | "complete";
+type GameState = {
+  phase: Phase;
+  phaseFrame: number;
+};
 
 function normalizeKey(e: KeyboardEvent): string {
   const k = e.key.toLowerCase();
@@ -109,6 +125,23 @@ export default function Platformer({ level }: Props) {
     const heldKeys = new Set<string>();
     const justPressed = new Set<string>();
     let detectionFrames = 0;
+    const game: GameState = { phase: "playing", phaseFrame: 0 };
+
+    /** Reset everything to the start-of-level state. */
+    function resetLevel() {
+      player.x = level.playerSpawn.x;
+      player.y = 0;
+      player.vx = 0;
+      player.vy = 0;
+      player.facing = 1;
+      player.onGround = false;
+      player.crouching = false;
+      player.animTime = 0;
+      for (let i = 0; i < enemies.length; i++) {
+        Object.assign(enemies[i], spawnEnemy(level.enemies[i]));
+      }
+      detectionFrames = 0;
+    }
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -150,120 +183,158 @@ export default function Platformer({ level }: Props) {
       const groundY = h * GROUND_RATIO;
       const platforms = materializePlatforms(level.platforms, groundY);
 
-      // ===== Input → player intent =====
-      const sprinting = heldKeys.has("shift");
-      const speed = sprinting ? RUN_SPEED : WALK_SPEED;
-      player.crouching = heldKeys.has("s") && player.onGround;
+      // Frame-local values that the draw step reads. Populated below
+      // when phase === "playing"; defaults otherwise so cones/prompts
+      // stay neutral during respawn/complete.
+      let anySpotted = false;
+      let stealthTarget: StealthKillTarget | null = null;
 
-      const left = heldKeys.has("a");
-      const right = heldKeys.has("d");
-      if (player.crouching) {
-        player.vx = 0;
-      } else if (left && !right) {
-        player.vx = -speed;
-        player.facing = -1;
-      } else if (right && !left) {
-        player.vx = speed;
-        player.facing = 1;
-      } else {
-        player.vx = 0;
-      }
+      if (game.phase === "playing") {
+        // ===== Input → player intent =====
+        const sprinting = heldKeys.has("shift");
+        const speed = sprinting ? RUN_SPEED : WALK_SPEED;
+        player.crouching = heldKeys.has("s") && player.onGround;
 
-      if (
-        (heldKeys.has("space") || heldKeys.has("w")) &&
-        player.onGround &&
-        !player.crouching
-      ) {
-        player.vy = JUMP_VEL;
-        player.onGround = false;
-      }
-
-
-      // ===== Player physics: X axis =====
-      player.x += player.vx;
-      if (player.x < P_HALF_W) player.x = P_HALF_W;
-      if (player.x > level.worldWidth - P_HALF_W) {
-        player.x = level.worldWidth - P_HALF_W;
-      }
-      for (const p of platforms) {
-        if (aabbHit(player.x, player.y, p)) {
-          if (player.vx > 0) player.x = p.x - P_HALF_W;
-          else if (player.vx < 0) player.x = p.x + p.w + P_HALF_W;
+        const left = heldKeys.has("a");
+        const right = heldKeys.has("d");
+        if (player.crouching) {
+          player.vx = 0;
+        } else if (left && !right) {
+          player.vx = -speed;
+          player.facing = -1;
+        } else if (right && !left) {
+          player.vx = speed;
+          player.facing = 1;
+        } else {
           player.vx = 0;
         }
-      }
 
-      // ===== Player physics: Y axis =====
-      player.vy += GRAVITY;
-      player.y += player.vy;
-      player.onGround = false;
-      if (player.y >= groundY) {
-        player.y = groundY;
-        player.vy = 0;
-        player.onGround = true;
-      }
-      for (const p of platforms) {
-        if (aabbHit(player.x, player.y, p)) {
-          if (player.vy > 0) {
-            player.y = p.y;
-            player.vy = 0;
-            player.onGround = true;
-          } else if (player.vy < 0) {
-            player.y = p.y + p.h + P_HEIGHT;
-            player.vy = 0;
-          } else {
-            player.y = p.y;
-            player.onGround = true;
+        if (
+          (heldKeys.has("space") || heldKeys.has("w")) &&
+          player.onGround &&
+          !player.crouching
+        ) {
+          player.vy = JUMP_VEL;
+          player.onGround = false;
+        }
+
+        // ===== Player physics: X axis =====
+        player.x += player.vx;
+        if (player.x < P_HALF_W) player.x = P_HALF_W;
+        if (player.x > level.worldWidth - P_HALF_W) {
+          player.x = level.worldWidth - P_HALF_W;
+        }
+        for (const p of platforms) {
+          if (aabbHit(player.x, player.y, p)) {
+            if (player.vx > 0) player.x = p.x - P_HALF_W;
+            else if (player.vx < 0) player.x = p.x + p.w + P_HALF_W;
+            player.vx = 0;
           }
         }
-      }
 
-      // ===== Enemy AI =====
-      for (let i = 0; i < enemies.length; i++) {
-        tickEnemy(enemies[i], level.enemies[i]);
-      }
-
-      // ===== Detection =====
-      let anySpotted = false;
-      for (let i = 0; i < enemies.length; i++) {
-        if (isInVisionCone(enemies[i], level.enemies[i], player, groundY)) {
-          anySpotted = true;
-          break;
-        }
-      }
-      detectionFrames = anySpotted
-        ? Math.min(detectionFrames + 1, 999)
-        : Math.max(detectionFrames - 2, 0);
-
-      // ===== Stealth kill (edge-triggered) =====
-      // Computed once after physics — same target drives both the HUD
-      // prompt and the kill action, so the rules can never drift.
-      let stealthTarget = findStealthKillTarget(player, enemies, groundY);
-      if (justPressed.has("e") && stealthTarget) {
-        const enemy = enemies[stealthTarget.enemyIdx];
-        killEnemy(enemy);
-        if (stealthTarget.kind === "air") {
-          // Drop onto the enemy's spot — satisfying "land into their place".
-          player.x = enemy.x;
+        // ===== Player physics: Y axis =====
+        player.vy += GRAVITY;
+        player.y += player.vy;
+        player.onGround = false;
+        if (player.y >= groundY) {
           player.y = groundY;
           player.vy = 0;
           player.onGround = true;
         }
-        stealthTarget = null;
-      }
+        for (const p of platforms) {
+          if (aabbHit(player.x, player.y, p)) {
+            if (player.vy > 0) {
+              player.y = p.y;
+              player.vy = 0;
+              player.onGround = true;
+            } else if (player.vy < 0) {
+              player.y = p.y + p.h + P_HEIGHT;
+              player.vy = 0;
+            } else {
+              player.y = p.y;
+              player.onGround = true;
+            }
+          }
+        }
 
-      // ===== Camera =====
-      const targetCamX = player.x - w / 2;
-      const maxCamX = Math.max(0, level.worldWidth - w);
-      camera.x += (targetCamX - camera.x) * CAMERA_LERP;
-      if (camera.x < 0) camera.x = 0;
-      if (camera.x > maxCamX) camera.x = maxCamX;
+        // ===== Enemy AI =====
+        for (let i = 0; i < enemies.length; i++) {
+          tickEnemy(enemies[i], level.enemies[i]);
+        }
 
-      // ===== Animation clock =====
-      if (player.vx !== 0 && player.onGround) {
-        player.animTime += sprinting ? 0.28 : 0.18;
-      } else {
-        player.animTime = 0;
+        // ===== Detection =====
+        for (let i = 0; i < enemies.length; i++) {
+          if (isInVisionCone(enemies[i], level.enemies[i], player, groundY)) {
+            anySpotted = true;
+            break;
+          }
+        }
+        detectionFrames = anySpotted
+          ? Math.min(detectionFrames + 1, 999)
+          : Math.max(detectionFrames - 2, 0);
+
+        // ===== Stealth kill (edge-triggered) =====
+        // Same call drives both the prompt and the kill action so the
+        // rules can't drift between them.
+        stealthTarget = findStealthKillTarget(player, enemies, groundY);
+        if (justPressed.has("e") && stealthTarget) {
+          const enemy = enemies[stealthTarget.enemyIdx];
+          killEnemy(enemy);
+          if (stealthTarget.kind === "air") {
+            // Drop onto the enemy's spot — "landed in their place".
+            player.x = enemy.x;
+            player.y = groundY;
+            player.vy = 0;
+            player.onGround = true;
+          }
+          stealthTarget = null;
+        }
+
+        // ===== Camera =====
+        const targetCamX = player.x - w / 2;
+        const maxCamX = Math.max(0, level.worldWidth - w);
+        camera.x += (targetCamX - camera.x) * CAMERA_LERP;
+        if (camera.x < 0) camera.x = 0;
+        if (camera.x > maxCamX) camera.x = maxCamX;
+
+        // ===== Animation clock =====
+        if (player.vx !== 0 && player.onGround) {
+          player.animTime += sprinting ? 0.28 : 0.18;
+        } else {
+          player.animTime = 0;
+        }
+
+        // ===== Phase transitions =====
+        if (detectionFrames >= RESPAWN_THRESHOLD) {
+          game.phase = "respawning";
+          game.phaseFrame = 0;
+        } else if (player.x >= level.endTriggerX) {
+          game.phase = "complete";
+          game.phaseFrame = 0;
+        } else if (justPressed.has("r")) {
+          // Manual restart from anywhere.
+          game.phase = "respawning";
+          game.phaseFrame = 0;
+        }
+      } else if (game.phase === "respawning") {
+        game.phaseFrame++;
+        if (game.phaseFrame === FADE_OUT_FRAMES) {
+          resetLevel();
+          camera.x = Math.max(
+            0,
+            Math.min(level.worldWidth - w, level.playerSpawn.x - w / 2)
+          );
+        }
+        if (game.phaseFrame >= FADE_OUT_FRAMES + FADE_IN_FRAMES) {
+          game.phase = "playing";
+          game.phaseFrame = 0;
+        }
+      } else if (game.phase === "complete") {
+        game.phaseFrame++;
+        if (justPressed.has("r")) {
+          game.phase = "respawning";
+          game.phaseFrame = 0;
+        }
       }
 
       // ===== Draw world =====
@@ -275,7 +346,6 @@ export default function Platformer({ level }: Props) {
       drawPlatforms(ctx, platforms);
       drawEndMarker(ctx, groundY, level.worldWidth);
 
-      // Vision cones under enemy sprites
       for (let i = 0; i < enemies.length; i++) {
         if (enemies[i].dead) continue;
         drawVisionCone(
@@ -293,7 +363,6 @@ export default function Platformer({ level }: Props) {
       drawShadow(ctx, player, groundY, platforms);
       drawCharacter(ctx, player);
 
-      // Contextual prompt above the killable target (in world space)
       if (stealthTarget) {
         drawStealthKillPrompt(
           ctx,
@@ -305,8 +374,14 @@ export default function Platformer({ level }: Props) {
 
       ctx.restore();
 
-      // ===== Draw HUD overlay (screen space) =====
+      // ===== Screen-space overlays =====
       drawDetectionOverlay(ctx, w, h, detectionFrames);
+
+      if (game.phase === "respawning") {
+        drawRespawnFade(ctx, w, h, game.phaseFrame);
+      } else if (game.phase === "complete") {
+        drawCompleteOverlay(ctx, w, h, level.title, game.phaseFrame);
+      }
 
       justPressed.clear();
       raf = requestAnimationFrame(tick);
@@ -653,6 +728,82 @@ function drawDetectionOverlay(
       ctx.fillText(ch, cx, 56);
       cx += charW + spacing;
     }
+  }
+
+  ctx.restore();
+}
+
+function drawRespawnFade(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  phaseFrame: number
+) {
+  let alpha: number;
+  if (phaseFrame < FADE_OUT_FRAMES) {
+    // Fading out: 0 → 1
+    alpha = phaseFrame / FADE_OUT_FRAMES;
+  } else {
+    // Fading in: 1 → 0
+    const t = phaseFrame - FADE_OUT_FRAMES;
+    alpha = Math.max(0, 1 - t / FADE_IN_FRAMES);
+  }
+  ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+  ctx.fillRect(0, 0, w, h);
+}
+
+function drawCompleteOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  levelTitle: string,
+  phaseFrame: number
+) {
+  const fadeIn = Math.min(1, phaseFrame / 30);
+
+  ctx.save();
+
+  // Dim the world
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.72 * fadeIn})`;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.globalAlpha = fadeIn;
+
+  // Title
+  ctx.fillStyle = "rgba(234, 179, 8, 0.95)";
+  ctx.font = "600 12px ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const titleWord = "LEVEL COMPLETE";
+  const titleSpacing = 8;
+  const titleCharW = ctx.measureText("L").width;
+  const titleTotal =
+    titleWord.length * titleCharW + (titleWord.length - 1) * titleSpacing;
+  let tcx = w / 2 - titleTotal / 2 + titleCharW / 2;
+  for (const ch of titleWord) {
+    ctx.fillText(ch, tcx, h / 2 - 24);
+    tcx += titleCharW + titleSpacing;
+  }
+
+  // Subtitle (level title, normal kerning)
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.font = "400 16px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText(levelTitle, w / 2, h / 2 + 4);
+
+  // Hint pulses
+  const hintPulse =
+    0.5 + 0.5 * Math.sin(performance.now() / 320);
+  ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + 0.4 * hintPulse})`;
+  ctx.font = "400 10px ui-sans-serif, system-ui, sans-serif";
+  const hintWord = "PRESS R TO PLAY AGAIN";
+  const hintSpacing = 5;
+  const hintCharW = ctx.measureText("P").width;
+  const hintTotal =
+    hintWord.length * hintCharW + (hintWord.length - 1) * hintSpacing;
+  let hcx = w / 2 - hintTotal / 2 + hintCharW / 2;
+  for (const ch of hintWord) {
+    ctx.fillText(ch, hcx, h / 2 + 42);
+    hcx += hintCharW + hintSpacing;
   }
 
   ctx.restore();

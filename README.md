@@ -13,10 +13,9 @@ No install. No signup. Open the URL, the level loads, you play.
 | `Space` (or `W`) | Jump |
 | `S` | Crouch |
 | `E` | Stealth kill (when prompt appears) |
+| `R` | Restart the level |
 
-A 2000px-wide scrolling world, a smooth-follow camera, five platforms, and one Templar guard patrolling the open stretch. The guard has a vision cone — step into it and `DETECTED` lights up. Sneak up behind him while he's facing away and an `E` prompt appears above his head; press `E` and he drops.
-
-No game-over yet, no respawn — getting spotted is feedback, not failure. Crouch is still cosmetic.
+A 2000px-wide scrolling world, a smooth-follow camera, five platforms, and one Templar guard patrolling the open stretch. Stay in his vision cone too long and you fade to black and respawn. Reach the end marker on the right and `LEVEL COMPLETE` shows — press `R` to play again. Crouch is still cosmetic; no climb, no cover, no second enemy yet.
 
 ## Stack
 
@@ -121,14 +120,28 @@ Two paths to a kill. The engine returns which one applies, and the prompt above 
 
 Press `E` while the prompt is up and they drop. Dead enemies stop ticking, don't emit vision cones, and stay slumped where they fell.
 
+## Game loop
+
+State machine in Platformer.tsx:
+
+```
+playing ──spotted ≥ RESPAWN_THRESHOLD──▶ respawning ──fade in done──▶ playing
+playing ──x ≥ endTriggerX──────────────▶ complete  ──R pressed────▶ respawning
+playing ──R pressed────────────────────▶ respawning
+complete ──R pressed───────────────────▶ respawning
+```
+
+`respawning` is a single transition with three sub-stages over `FADE_OUT_FRAMES + FADE_IN_FRAMES` frames (60 by default): fade to black, snap state via `resetLevel()` mid-fade, fade back in. `resetLevel()` brings dead enemies back to life — a respawn is a full level reset.
+
+Detection decays when you break line of sight (down 2 per frame vs. up 1 per frame), so brief sightings don't immediately kill you.
+
 ## What's next
 
-- **Respawn on detection** — caught for >N frames → respawn at level start. Closes the stealth loop.
-- **Cover blocks vision** — line-of-sight occluded by walls/crates. Currently the cone is line-only.
+- **Cover blocks vision** — line-of-sight occluded by walls/crates. Currently the cone passes through everything.
 - **Climb / ledge grab** — `W` becomes useful.
 - **A second enemy type** — archer or brute. Tests whether the engine module is actually reusable.
 - **Touch controls** for mobile.
-- **Parallax backdrop**, **sprite art**, **level-complete state**.
+- **Parallax backdrop**, **sprite art**, **per-level music**.
 
 ## Non-goals
 

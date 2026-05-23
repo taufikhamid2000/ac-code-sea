@@ -64,6 +64,12 @@ export type LevelDef = {
   backdrop: string;
   /** Where the player spawns. y is always on the ground. */
   playerSpawn: { x: number };
+  /**
+   * x at which the level is considered complete. Cross this and the
+   * "LEVEL COMPLETE" overlay appears. Typically sits just inside the
+   * end marker visual.
+   */
+  endTriggerX: number;
   platforms: PlatformDef[];
   enemies: EnemyDef[];
 };

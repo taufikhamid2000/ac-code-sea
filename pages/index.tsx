@@ -75,6 +75,9 @@ export default function Home() {
           <span>
             <Key>E</Key> &nbsp;stealth&nbsp;kill
           </span>
+          <span>
+            <Key>R</Key> &nbsp;restart
+          </span>
         </div>
       </main>
     </>
