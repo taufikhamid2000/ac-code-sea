@@ -102,14 +102,24 @@ Coordinate notes:
 
 ## Stealth kill rules
 
-You can stealth-kill an enemy when **all** of these are true:
+Two paths to a kill. The engine returns which one applies, and the prompt above the enemy reflects it:
 
-- The enemy is alive.
+**Ground kill — "behind the back":**
+- Enemy is alive.
+- You are on the same floor (within `STEALTH_KILL_Y_TOLERANCE`, 30px).
 - You are **behind** them (opposite their facing direction).
-- You are within `STEALTH_KILL_RANGE` (55px) horizontally.
-- You are on the same floor (within `STEALTH_KILL_Y_TOLERANCE` of `groundY`).
+- Horizontal distance ≤ `STEALTH_KILL_RANGE` (55px).
+- Prompt: a single `E` circle above the enemy.
 
-When all conditions hold, a pulsing `E` prompt appears above the enemy. Press `E` and they drop. Dead enemies stop ticking, don't emit vision cones, and stay slumped where they fell.
+**Air kill — "drop from above":**
+- Enemy is alive.
+- You are at least `AIR_KILL_MIN_HEIGHT` (35px) above the enemy's feet.
+- Horizontal distance ≤ `AIR_KILL_RANGE` (42px — narrower; you have to aim).
+- Facing direction **does not matter** — enemies don't look up.
+- Prompt: the `E` circle with a downward chevron above it.
+- On press, the player snaps onto the enemy's spot (the satisfying "landed in their place" feel).
+
+Press `E` while the prompt is up and they drop. Dead enemies stop ticking, don't emit vision cones, and stay slumped where they fell.
 
 ## What's next
 

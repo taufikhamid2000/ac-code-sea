@@ -53,11 +53,28 @@ const EYE_DY_BY_KIND: Record<EnemyKind, number> = {
 /** Where on a target the enemy's sight focuses (above feet). */
 const SIGHT_TARGET_DY = 20;
 
-/** Default stealth-kill horizontal range (pixels). */
+/** Ground stealth-kill horizontal range (pixels). */
 export const STEALTH_KILL_RANGE = 55;
 
-/** Default same-floor tolerance — actor's feet vs. enemy's feet. */
+/** Same-floor tolerance — actor's feet vs. enemy's feet. */
 export const STEALTH_KILL_Y_TOLERANCE = 30;
+
+/** Air assassinate horizontal range (pixels). Narrower than ground — you have to aim. */
+export const AIR_KILL_RANGE = 42;
+
+/**
+ * Minimum vertical separation for an air kill, in pixels. Player's feet
+ * must be at least this far ABOVE the enemy's feet.
+ */
+export const AIR_KILL_MIN_HEIGHT = 35;
+
+/** Discriminates between behind-the-back and drop-from-above kills. */
+export type StealthKillKind = "ground" | "air";
+
+export type StealthKillTarget = {
+  enemyIdx: number;
+  kind: StealthKillKind;
+};
 
 export function spawnEnemy(def: EnemyDef): EnemyState {
   return {
@@ -123,41 +140,67 @@ export function isInVisionCone(
 }
 
 /**
- * Find the closest enemy that the actor can stealth-kill right now.
- * Returns the enemy index, or null if none qualify.
+ * Find the closest enemy the actor can stealth-kill right now, and which
+ * KIND of kill applies. Returns null if no enemy qualifies.
  *
- * Rules:
- *   - Enemy must be alive.
- *   - Actor must be BEHIND the enemy (opposite the enemy's facing).
- *   - Actor and enemy must be on the same floor (within yTolerance).
- *   - Horizontal distance must be within range.
+ * Two paths to a kill:
+ *
+ *   Ground kill — "behind the back":
+ *     - Enemy alive.
+ *     - Actor on the same floor (within STEALTH_KILL_Y_TOLERANCE).
+ *     - Actor BEHIND the enemy (opposite the enemy's facing).
+ *     - Horizontal distance within STEALTH_KILL_RANGE.
+ *
+ *   Air kill — "drop from above":
+ *     - Enemy alive.
+ *     - Actor at least AIR_KILL_MIN_HEIGHT above the enemy's feet.
+ *     - Horizontal distance within AIR_KILL_RANGE (narrower — you aim).
+ *     - Facing direction of the enemy does NOT matter — enemies don't
+ *       look up.
+ *
+ * Enemy y is currently always groundY (no platform-standing enemies yet).
+ * When that changes, replace the `enemyY = groundY` line with each
+ * enemy's actual y.
  */
 export function findStealthKillTarget(
   actor: StealthKillActor,
   enemies: EnemyState[],
-  groundY: number,
-  range: number = STEALTH_KILL_RANGE,
-  yTolerance: number = STEALTH_KILL_Y_TOLERANCE
-): number | null {
-  if (Math.abs(actor.y - groundY) > yTolerance) return null;
-
-  let bestIdx: number | null = null;
+  groundY: number
+): StealthKillTarget | null {
+  let best: StealthKillTarget | null = null;
   let bestDist = Infinity;
+
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
     if (e.dead) continue;
+
+    const enemyY = groundY; // see comment above
     const dx = actor.x - e.x;
-    // "Behind" means on the opposite side of the enemy's facing direction.
-    const isBehind = dx * e.facing < 0;
-    if (!isBehind) continue;
+    const dyDown = actor.y - enemyY; // positive = below, negative = above
     const absDx = Math.abs(dx);
-    if (absDx > range) continue;
+
+    let kind: StealthKillKind | null = null;
+
+    if (Math.abs(dyDown) < STEALTH_KILL_Y_TOLERANCE) {
+      // Same floor — try ground kill rules.
+      const isBehind = dx * e.facing < 0;
+      if (isBehind && absDx < STEALTH_KILL_RANGE) {
+        kind = "ground";
+      }
+    } else if (dyDown < -AIR_KILL_MIN_HEIGHT) {
+      // Actor is meaningfully above — try air kill rules.
+      if (absDx < AIR_KILL_RANGE) {
+        kind = "air";
+      }
+    }
+
+    if (kind === null) continue;
     if (absDx < bestDist) {
       bestDist = absDx;
-      bestIdx = i;
+      best = { enemyIdx: i, kind };
     }
   }
-  return bestIdx;
+  return best;
 }
 
 /** Mark an enemy dead. Idempotent. */

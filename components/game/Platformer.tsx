@@ -178,13 +178,6 @@ export default function Platformer({ level }: Props) {
         player.onGround = false;
       }
 
-      // ===== Stealth kill (edge-triggered) =====
-      if (justPressed.has("e")) {
-        const idx = findStealthKillTarget(player, enemies, groundY);
-        if (idx !== null) {
-          killEnemy(enemies[idx]);
-        }
-      }
 
       // ===== Player physics: X axis =====
       player.x += player.vx;
@@ -242,8 +235,22 @@ export default function Platformer({ level }: Props) {
         ? Math.min(detectionFrames + 1, 999)
         : Math.max(detectionFrames - 2, 0);
 
-      // ===== Find stealth-kill prompt target (for UI hint) =====
-      const killTargetIdx = findStealthKillTarget(player, enemies, groundY);
+      // ===== Stealth kill (edge-triggered) =====
+      // Computed once after physics — same target drives both the HUD
+      // prompt and the kill action, so the rules can never drift.
+      let stealthTarget = findStealthKillTarget(player, enemies, groundY);
+      if (justPressed.has("e") && stealthTarget) {
+        const enemy = enemies[stealthTarget.enemyIdx];
+        killEnemy(enemy);
+        if (stealthTarget.kind === "air") {
+          // Drop onto the enemy's spot — satisfying "land into their place".
+          player.x = enemy.x;
+          player.y = groundY;
+          player.vy = 0;
+          player.onGround = true;
+        }
+        stealthTarget = null;
+      }
 
       // ===== Camera =====
       const targetCamX = player.x - w / 2;
@@ -287,8 +294,13 @@ export default function Platformer({ level }: Props) {
       drawCharacter(ctx, player);
 
       // Contextual prompt above the killable target (in world space)
-      if (killTargetIdx !== null) {
-        drawStealthKillPrompt(ctx, enemies[killTargetIdx], groundY);
+      if (stealthTarget) {
+        drawStealthKillPrompt(
+          ctx,
+          enemies[stealthTarget.enemyIdx],
+          groundY,
+          stealthTarget.kind
+        );
       }
 
       ctx.restore();
@@ -564,15 +576,27 @@ function drawVisionCone(
 function drawStealthKillPrompt(
   ctx: CanvasRenderingContext2D,
   enemy: EnemyState,
-  groundY: number
+  groundY: number,
+  kind: "ground" | "air"
 ) {
   const x = enemy.x;
   const y = groundY - 62;
-  // Soft pulse using a sine — slow.
   const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 220);
 
   ctx.save();
   ctx.globalAlpha = pulse;
+
+  // Air-kill prompt gets a small downward chevron above the circle
+  // to signal "drop on them from here".
+  if (kind === "air") {
+    ctx.fillStyle = "rgba(234, 179, 8, 0.95)";
+    ctx.beginPath();
+    ctx.moveTo(x, y - 18);
+    ctx.lineTo(x - 5, y - 25);
+    ctx.lineTo(x + 5, y - 25);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
   ctx.strokeStyle = "rgba(234, 179, 8, 0.95)";
