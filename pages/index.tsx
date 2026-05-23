@@ -1,12 +1,13 @@
 import Head from "next/head";
 import dynamic from "next/dynamic";
+import { level01 } from "@/lib/levels";
 
 // Canvas + window access — client-only.
 const Platformer = dynamic(() => import("@/components/game/Platformer"), {
   ssr: false,
 });
 
-const BACKGROUND_IMAGE = "/4.png";
+const ACTIVE_LEVEL = level01;
 
 export default function Home() {
   return (
@@ -27,7 +28,7 @@ export default function Home() {
           property="og:description"
           content="The Brotherhood, in pre-colonial Southeast Asia."
         />
-        <meta property="og:image" content={BACKGROUND_IMAGE} />
+        <meta property="og:image" content={ACTIVE_LEVEL.backdrop} />
       </Head>
 
       <main className="relative h-[100dvh] w-full select-none overflow-hidden bg-black text-white antialiased">
@@ -35,9 +36,8 @@ export default function Home() {
         <div
           aria-hidden
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${BACKGROUND_IMAGE})` }}
+          style={{ backgroundImage: `url(${ACTIVE_LEVEL.backdrop})` }}
         />
-        {/* Darken + atmospheric gradient */}
         <div
           aria-hidden
           className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/90"
@@ -45,7 +45,7 @@ export default function Home() {
 
         {/* Game canvas */}
         <div className="absolute inset-0">
-          <Platformer />
+          <Platformer level={ACTIVE_LEVEL} />
         </div>
 
         {/* Title chip */}
@@ -54,7 +54,7 @@ export default function Home() {
             AC · Code SEA
           </p>
           <p className="mt-1 text-[9px] uppercase tracking-[4px] text-yellow-500/70">
-            Prototype · Level 01
+            {ACTIVE_LEVEL.chapter} · {ACTIVE_LEVEL.title}
           </p>
         </div>
 
