@@ -72,6 +72,9 @@ export default function Home() {
           <span>
             <Key>S</Key> &nbsp;crouch
           </span>
+          <span>
+            <Key>E</Key> &nbsp;stealth&nbsp;kill
+          </span>
         </div>
       </main>
     </>

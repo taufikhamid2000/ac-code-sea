@@ -20,8 +20,15 @@ export type PlatformDef = {
   h: number;
 };
 
-export type GuardDef = {
-  /** Patrol range — guard paces between these two world-space x values */
+/**
+ * Discriminator for enemy types. Add new kinds here as the roster grows
+ * — drawing + behavior switch on this in the engine.
+ */
+export type EnemyKind = "templar-guard";
+
+export type EnemyDef = {
+  kind: EnemyKind;
+  /** Patrol range — enemy paces between these two world-space x values */
   patrolMinX: number;
   patrolMaxX: number;
   /** Pixels per frame */
@@ -58,5 +65,5 @@ export type LevelDef = {
   /** Where the player spawns. y is always on the ground. */
   playerSpawn: { x: number };
   platforms: PlatformDef[];
-  guards: GuardDef[];
+  enemies: EnemyDef[];
 };

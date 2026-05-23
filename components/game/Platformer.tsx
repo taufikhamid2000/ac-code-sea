@@ -1,9 +1,13 @@
 import { useEffect, useRef } from "react";
-import type {
-  GuardDef,
-  LevelDef,
-  PlatformDef,
-} from "@/lib/levels";
+import type { EnemyDef, LevelDef, PlatformDef } from "@/lib/levels";
+import {
+  type EnemyState,
+  findStealthKillTarget,
+  isInVisionCone,
+  killEnemy,
+  spawnEnemy,
+  tickEnemy,
+} from "@/lib/engine/enemy";
 
 // ===== Engine constants — same across all levels =====
 const GRAVITY = 0.7;
@@ -16,11 +20,9 @@ const CAMERA_LERP = 0.12;
 // Player bounding box (relative to feet point)
 const P_HALF_W = 9;
 const P_HEIGHT = 50;
-const P_EYE_DY = 20; // eye/center offset above feet, for detection target
 
-// Guard rendering / detection
-const GUARD_HALF_W = 10;
-const GUARD_EYE_DY = 36; // eye offset above ground (= near head height)
+// Guard rendering (visual only; cone math lives in lib/engine/enemy.ts)
+const GUARD_EYE_DY = 36; // must match EYE_DY_BY_KIND["templar-guard"]
 
 type Platform = { x: number; y: number; w: number; h: number };
 
@@ -35,14 +37,17 @@ type PlayerState = {
   animTime: number;
 };
 
-type GuardState = {
-  x: number;
-  facing: 1 | -1;
-  pauseFrames: number;
-  animTime: number;
-};
-
-const TRACKED_KEYS = new Set(["w", "a", "s", "d", "space", "shift"]);
+// All keys the game cares about. Held vs. edge-triggered is decided at
+// the read site (heldKeys vs. justPressed).
+const TRACKED_KEYS = new Set([
+  "w",
+  "a",
+  "s",
+  "d",
+  "space",
+  "shift",
+  "e",
+]);
 
 function normalizeKey(e: KeyboardEvent): string {
   const k = e.key.toLowerCase();
@@ -74,30 +79,6 @@ function materializePlatforms(
   }));
 }
 
-function isInVisionCone(
-  gState: GuardState,
-  gDef: GuardDef,
-  player: PlayerState,
-  groundY: number
-): boolean {
-  const eyeX = gState.x;
-  const eyeY = groundY - GUARD_EYE_DY;
-  const targetX = player.x;
-  const targetY = player.y - P_EYE_DY;
-
-  const dx = targetX - eyeX;
-  const dy = targetY - eyeY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > gDef.visionLength) return false;
-
-  // Project into guard's forward frame
-  const forwardDx = dx * gState.facing;
-  if (forwardDx <= 0) return false; // behind the guard
-
-  const angle = Math.atan2(dy, forwardDx);
-  return Math.abs(angle - gDef.visionCenterAngle) < gDef.visionHalfAngle;
-}
-
 type Props = {
   level: LevelDef;
 };
@@ -123,15 +104,11 @@ export default function Platformer({ level }: Props) {
       crouching: false,
       animTime: 0,
     };
-    const guards: GuardState[] = level.guards.map((g) => ({
-      x: g.startFacing === 1 ? g.patrolMinX : g.patrolMaxX,
-      facing: g.startFacing,
-      pauseFrames: 0,
-      animTime: 0,
-    }));
+    const enemies: EnemyState[] = level.enemies.map(spawnEnemy);
     const camera = { x: 0 };
-    const keys = new Set<string>();
-    let detectionFrames = 0; // frames spent in any cone
+    const heldKeys = new Set<string>();
+    const justPressed = new Set<string>();
+    let detectionFrames = 0;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -150,14 +127,17 @@ export default function Platformer({ level }: Props) {
       const k = normalizeKey(e);
       if (TRACKED_KEYS.has(k)) {
         e.preventDefault();
-        keys.add(k);
+        if (!heldKeys.has(k)) {
+          justPressed.add(k);
+        }
+        heldKeys.add(k);
       }
     }
     function onUp(e: KeyboardEvent) {
-      keys.delete(normalizeKey(e));
+      heldKeys.delete(normalizeKey(e));
     }
     function onBlur() {
-      keys.clear();
+      heldKeys.clear();
     }
     window.addEventListener("keydown", onDown);
     window.addEventListener("keyup", onUp);
@@ -171,12 +151,12 @@ export default function Platformer({ level }: Props) {
       const platforms = materializePlatforms(level.platforms, groundY);
 
       // ===== Input → player intent =====
-      const sprinting = keys.has("shift");
+      const sprinting = heldKeys.has("shift");
       const speed = sprinting ? RUN_SPEED : WALK_SPEED;
-      player.crouching = keys.has("s") && player.onGround;
+      player.crouching = heldKeys.has("s") && player.onGround;
 
-      const left = keys.has("a");
-      const right = keys.has("d");
+      const left = heldKeys.has("a");
+      const right = heldKeys.has("d");
       if (player.crouching) {
         player.vx = 0;
       } else if (left && !right) {
@@ -190,12 +170,20 @@ export default function Platformer({ level }: Props) {
       }
 
       if (
-        (keys.has("space") || keys.has("w")) &&
+        (heldKeys.has("space") || heldKeys.has("w")) &&
         player.onGround &&
         !player.crouching
       ) {
         player.vy = JUMP_VEL;
         player.onGround = false;
+      }
+
+      // ===== Stealth kill (edge-triggered) =====
+      if (justPressed.has("e")) {
+        const idx = findStealthKillTarget(player, enemies, groundY);
+        if (idx !== null) {
+          killEnemy(enemies[idx]);
+        }
       }
 
       // ===== Player physics: X axis =====
@@ -237,32 +225,15 @@ export default function Platformer({ level }: Props) {
         }
       }
 
-      // ===== Guard AI =====
-      for (let i = 0; i < guards.length; i++) {
-        const gs = guards[i];
-        const gd = level.guards[i];
-        if (gs.pauseFrames > 0) {
-          gs.pauseFrames--;
-          gs.animTime = 0;
-          continue;
-        }
-        gs.x += gd.speed * gs.facing;
-        gs.animTime += 0.15;
-        if (gs.x >= gd.patrolMaxX) {
-          gs.x = gd.patrolMaxX;
-          gs.facing = -1;
-          gs.pauseFrames = gd.pauseAtEnds;
-        } else if (gs.x <= gd.patrolMinX) {
-          gs.x = gd.patrolMinX;
-          gs.facing = 1;
-          gs.pauseFrames = gd.pauseAtEnds;
-        }
+      // ===== Enemy AI =====
+      for (let i = 0; i < enemies.length; i++) {
+        tickEnemy(enemies[i], level.enemies[i]);
       }
 
       // ===== Detection =====
       let anySpotted = false;
-      for (let i = 0; i < guards.length; i++) {
-        if (isInVisionCone(guards[i], level.guards[i], player, groundY)) {
+      for (let i = 0; i < enemies.length; i++) {
+        if (isInVisionCone(enemies[i], level.enemies[i], player, groundY)) {
           anySpotted = true;
           break;
         }
@@ -270,6 +241,9 @@ export default function Platformer({ level }: Props) {
       detectionFrames = anySpotted
         ? Math.min(detectionFrames + 1, 999)
         : Math.max(detectionFrames - 2, 0);
+
+      // ===== Find stealth-kill prompt target (for UI hint) =====
+      const killTargetIdx = findStealthKillTarget(player, enemies, groundY);
 
       // ===== Camera =====
       const targetCamX = player.x - w / 2;
@@ -294,22 +268,35 @@ export default function Platformer({ level }: Props) {
       drawPlatforms(ctx, platforms);
       drawEndMarker(ctx, groundY, level.worldWidth);
 
-      // Vision cones go under guards so the guard's silhouette sits on top
-      for (let i = 0; i < guards.length; i++) {
-        drawVisionCone(ctx, guards[i], level.guards[i], groundY, anySpotted);
+      // Vision cones under enemy sprites
+      for (let i = 0; i < enemies.length; i++) {
+        if (enemies[i].dead) continue;
+        drawVisionCone(
+          ctx,
+          enemies[i],
+          level.enemies[i],
+          groundY,
+          anySpotted
+        );
       }
-      for (const gs of guards) {
-        drawGuard(ctx, gs, groundY);
+      for (let i = 0; i < enemies.length; i++) {
+        drawEnemy(ctx, enemies[i], level.enemies[i], groundY);
       }
 
       drawShadow(ctx, player, groundY, platforms);
       drawCharacter(ctx, player);
 
+      // Contextual prompt above the killable target (in world space)
+      if (killTargetIdx !== null) {
+        drawStealthKillPrompt(ctx, enemies[killTargetIdx], groundY);
+      }
+
       ctx.restore();
 
-      // ===== Draw HUD overlay (screen space, not world) =====
+      // ===== Draw HUD overlay (screen space) =====
       drawDetectionOverlay(ctx, w, h, detectionFrames);
 
+      justPressed.clear();
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
@@ -441,40 +428,49 @@ function drawCharacter(ctx: CanvasRenderingContext2D, s: PlayerState) {
   ctx.restore();
 }
 
-function drawGuard(
+function drawEnemy(
   ctx: CanvasRenderingContext2D,
-  s: GuardState,
+  s: EnemyState,
+  def: EnemyDef,
   groundY: number
 ) {
-  const bob =
-    s.pauseFrames === 0 ? Math.abs(Math.sin(s.animTime)) * 1.2 : 0;
+  if (def.kind === "templar-guard") {
+    if (s.dead) {
+      drawTemplarGuardDead(ctx, s, groundY);
+    } else {
+      drawTemplarGuardAlive(ctx, s, groundY);
+    }
+  }
+}
+
+function drawTemplarGuardAlive(
+  ctx: CanvasRenderingContext2D,
+  s: EnemyState,
+  groundY: number
+) {
+  const bob = s.pauseFrames === 0 ? Math.abs(Math.sin(s.animTime)) * 1.2 : 0;
   const legSwing = s.pauseFrames === 0 ? Math.sin(s.animTime) * 4 : 0;
 
   ctx.save();
   ctx.translate(s.x, groundY - bob);
   ctx.scale(s.facing, 1);
 
-  // Legs
   ctx.fillStyle = "#3a1414";
   ctx.fillRect(-7 + legSwing * 0.4, -14, 5, 14);
   ctx.fillRect(2 - legSwing * 0.4, -14, 5, 14);
 
-  // Body (Templar red)
   ctx.fillStyle = "#5c1c1c";
   ctx.fillRect(-10, -34, 20, 20);
 
-  // Cross / sash
   ctx.fillStyle = "#d4a73c";
   ctx.fillRect(-1, -32, 2, 16);
   ctx.fillRect(-7, -25, 14, 2);
 
-  // Head
   ctx.fillStyle = "#1f1110";
   ctx.beginPath();
   ctx.arc(0, -40, 7, 0, Math.PI * 2);
   ctx.fill();
 
-  // Helmet
   ctx.fillStyle = "#7a5c20";
   ctx.beginPath();
   ctx.moveTo(-9, -42);
@@ -487,10 +483,48 @@ function drawGuard(
   ctx.restore();
 }
 
+function drawTemplarGuardDead(
+  ctx: CanvasRenderingContext2D,
+  s: EnemyState,
+  groundY: number
+) {
+  // Slumped on the ground — wide rectangle along the floor.
+  // Slight settle animation for the first ~15 frames.
+  const settle = Math.min(1, s.deathTimer / 15);
+
+  ctx.save();
+  ctx.translate(s.x, groundY);
+  ctx.scale(s.facing, 1);
+
+  // Body (lying down — wide low rect)
+  const bodyW = 26;
+  const bodyH = 6 + (1 - settle) * 6; // slumps from taller to thinner
+  ctx.fillStyle = "#3a1010";
+  ctx.fillRect(-bodyW / 2, -bodyH, bodyW, bodyH);
+
+  // Sash
+  ctx.fillStyle = "#7a5c20";
+  ctx.fillRect(-bodyW / 2 + 4, -bodyH + 1, 6, 2);
+
+  // Head
+  ctx.fillStyle = "#1f1110";
+  ctx.beginPath();
+  ctx.arc(bodyW / 2 - 2, -bodyH + 2, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Subtle pool of darkness under the body
+  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+  ctx.beginPath();
+  ctx.ellipse(0, 2, bodyW / 2 + 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function drawVisionCone(
   ctx: CanvasRenderingContext2D,
-  s: GuardState,
-  d: GuardDef,
+  s: EnemyState,
+  d: EnemyDef,
   groundY: number,
   alerted: boolean
 ) {
@@ -527,6 +561,37 @@ function drawVisionCone(
   ctx.restore();
 }
 
+function drawStealthKillPrompt(
+  ctx: CanvasRenderingContext2D,
+  enemy: EnemyState,
+  groundY: number
+) {
+  const x = enemy.x;
+  const y = groundY - 62;
+  // Soft pulse using a sine — slow.
+  const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 220);
+
+  ctx.save();
+  ctx.globalAlpha = pulse;
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
+  ctx.strokeStyle = "rgba(234, 179, 8, 0.95)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(234, 179, 8, 1)";
+  ctx.font =
+    "600 12px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("E", x, y + 1);
+
+  ctx.restore();
+}
+
 function drawDetectionOverlay(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -534,8 +599,6 @@ function drawDetectionOverlay(
   detectionFrames: number
 ) {
   if (detectionFrames <= 0) return;
-
-  // Red vignette intensifies the longer you're spotted (caps fast)
   const intensity = Math.min(1, detectionFrames / 20);
 
   ctx.save();
@@ -557,7 +620,6 @@ function drawDetectionOverlay(
     ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // Manual letter-spacing — ctx.letterSpacing is not in older TS lib types.
     const word = "DETECTED";
     const spacing = 7;
     const charW = ctx.measureText("D").width;
