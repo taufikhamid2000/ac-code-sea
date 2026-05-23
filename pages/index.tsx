@@ -54,7 +54,7 @@ export default function Home() {
             AC · Code SEA
           </p>
           <p className="mt-1 text-[9px] uppercase tracking-[4px] text-yellow-500/70">
-            Prototype · Chapter VI
+            Prototype · Level 01
           </p>
         </div>
 

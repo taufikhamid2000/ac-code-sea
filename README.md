@@ -4,7 +4,7 @@ A browser-playable 2D side-scroller, in the spirit of AC Chronicles. The Brother
 
 No install. No signup. Open the URL, the level loads, you play.
 
-## Current state — basic movement prototype
+## Current state — Level 01 prototype
 
 What works:
 
@@ -15,7 +15,9 @@ What works:
 | `Space` (or `W`) | Jump |
 | `S` | Crouch |
 
-The character is a placeholder hooded silhouette drawn on canvas. One screen, one ground line, gravity, walls at the viewport edges. No level scrolling, climb mechanics, stealth, combat, or AI yet.
+A 2000px-wide world with a smooth-follow camera. Five platforms at varying heights — landing, sides, and head-bonks all collide properly. Subtle ground line with tick marks for spatial reference, glowing end marker at the far right. Character is still a placeholder hooded silhouette drawn on canvas.
+
+No climb mechanics, stealth, combat, AI, or touch controls yet.
 
 ## Stack
 
@@ -47,12 +49,12 @@ public/1.png ... 9.png          -> backdrop art (placeholder)
 
 Building this out incrementally, not all at once. Likely next moves:
 
+- **A guard with a vision cone** — start the stealth loop, give the level a goal.
+- **Climb / ledge grab** — `W` becomes useful, makes platforms reachable from below.
 - **Touch controls** for mobile (left/right swipe + tap to jump).
-- **Climb / ledge grab** — `W` becomes useful.
-- **Level scrolling** — camera follows the player past the viewport edge.
-- **Tiles** — replace the single ground line with actual platforms.
+- **Parallax backdrop** — multiple background layers for depth.
 - **Sprite art** — the canvas-drawn silhouette is a stand-in.
-- **Enemies + stealth cones** — the AC Chronicles core loop.
+- **Level-complete state** — reaching the end marker triggers something.
 
 ## Non-goals
 
