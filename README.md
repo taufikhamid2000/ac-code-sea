@@ -1,19 +1,28 @@
 # AC · Code SEA
 
-A browser-playable interactive narrative. The Brotherhood, in pre-colonial Southeast Asia. Visual novel × choose-your-own-adventure.
+A browser-playable 2D side-scroller, in the spirit of AC Chronicles. The Brotherhood, in pre-colonial Southeast Asia.
 
-No install. No signup. Open the URL → first frame loads → make a choice → see what happens → reach an ending.
+No install. No signup. Open the URL, the level loads, you play.
 
-## Demo
+## Current state — basic movement prototype
 
-Chapter VI — **The Temptation of the Keris.** Hang Tuah. The Keris Taming Sari. A Templar at court and an ISU relic that does not obey time. 5 scenes, 2 branch points, 4 paths converging on a single ending beat.
+What works:
+
+| Key | Action |
+| --- | --- |
+| `A` / `D` | Walk left / right |
+| `Shift` (hold) | Sprint |
+| `Space` (or `W`) | Jump |
+| `S` | Crouch |
+
+The character is a placeholder hooded silhouette drawn on canvas. One screen, one ground line, gravity, walls at the viewport edges. No level scrolling, climb mechanics, stealth, combat, or AI yet.
 
 ## Stack
 
 - Next.js 13 (pages router)
-- Framer Motion for transitions
-- Tailwind for styling
-- Typed scene data in `lib/story.ts`
+- HTML5 Canvas, raw 2D context
+- React owns the component tree; the game loop is plain `requestAnimationFrame`
+- Tailwind for the chrome (title chip, control HUD)
 
 ## Run
 
@@ -22,26 +31,29 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3000`. Click the canvas so it has focus, then press keys.
 
 ## Layout
 
 ```
-lib/story.ts                  -> scene tree + branching data
-components/game/Game.tsx      -> scene state machine
-components/game/Scene.tsx     -> one scene + choice UI
-pages/index.tsx               -> game entry (=/)
-pages/storyline.tsx           -> redirect to /
-content/source/               -> raw narrative source (not bundled)
-public/1.png ... 9.png        -> scene backgrounds (placeholder art — see below)
+components/game/Platformer.tsx  -> canvas + game loop + character
+pages/index.tsx                 -> page chrome: backdrop, title, HUD
+pages/storyline.tsx             -> redirect to /
+content/source/                 -> raw narrative source (not bundled)
+public/1.png ... 9.png          -> backdrop art (placeholder)
 ```
 
-## Open items
+## What's next
 
-- **Art.** The 9 PNGs in `public/` are placeholders from the prior fan-site build. The brief calls for one locked-in art style across the whole demo — these need to be regenerated to a single style guide before launch.
-- **Storage.** The brief mentioned SQLite for chapter/choice data. For one demo chapter with static branching, that's overkill — `lib/story.ts` is a typed module instead. Swap to SQLite when the content surface grows past what's comfortable to hand-edit.
-- **Mobile QA.** Built mobile-first but needs a real-device pass. Target: under 2s load on 4G, one-thumb playable.
+Building this out incrementally, not all at once. Likely next moves:
+
+- **Touch controls** for mobile (left/right swipe + tap to jump).
+- **Climb / ledge grab** — `W` becomes useful.
+- **Level scrolling** — camera follows the player past the viewport edge.
+- **Tiles** — replace the single ground line with actual platforms.
+- **Sprite art** — the canvas-drawn silhouette is a stand-in.
+- **Enemies + stealth cones** — the AC Chronicles core loop.
 
 ## Non-goals
 
-Multi-chapter save states. Achievements. Multiplayer. Migrating off the browser. Anything that asks the player to commit before they play.
+Multiplayer. Saved games. Migrating off the browser. Anything that asks the player to commit before they play.
