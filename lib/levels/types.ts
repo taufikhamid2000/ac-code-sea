@@ -1,12 +1,11 @@
 /**
  * Level data types. Engine-agnostic — a LevelDef describes WHAT a level
- * contains; the engine (components/game/Platformer.tsx) is responsible for
- * HOW it plays.
+ * contains; the engine (lib/game/scenes/LevelScene.ts) is responsible
+ * for HOW it plays.
  *
- * Coordinates: x is world-space pixels (0 = leftmost). y for platforms is
- * stored as `dy` — distance ABOVE the ground line, so platforms re-align
- * when the viewport resizes (the ground line is a ratio of viewport
- * height, not an absolute y).
+ * Coordinates: x is world-space pixels (0 = leftmost). Platform y is
+ * stored as `dy` — distance ABOVE the ground line — so platforms
+ * re-align when the viewport resizes.
  */
 
 export type PlatformDef = {
@@ -14,62 +13,90 @@ export type PlatformDef = {
   x: number;
   /** Pixels above the ground line (top of platform = groundY - dy) */
   dy: number;
-  /** Width in pixels */
   w: number;
-  /** Height in pixels */
   h: number;
 };
 
-/**
- * Discriminator for enemy types. Add new kinds here as the roster grows
- * — drawing + behavior switch on this in the engine.
- */
-export type EnemyKind = "templar-guard";
+// ===== Enemies =====
 
-export type EnemyDef = {
-  kind: EnemyKind;
-  /** Patrol range — enemy paces between these two world-space x values */
+type EnemyDefBase = {
+  /** Initial facing direction: 1 = right, -1 = left */
+  startFacing: 1 | -1;
+};
+
+/**
+ * The patrolling Templar guard. Stealth content — players sneak past,
+ * stealth-kill from behind or above.
+ */
+export type TemplarGuardDef = EnemyDefBase & {
+  kind: "templar-guard";
   patrolMinX: number;
   patrolMaxX: number;
   /** Pixels per frame */
   speed: number;
-  /** Initial facing direction: 1 = right, -1 = left */
-  startFacing: 1 | -1;
   /** Frames to pause at each patrol endpoint before turning */
   pauseAtEnds: number;
-  /** Vision cone length in pixels (line-of-sight distance) */
+  /** Vision cone length in pixels */
   visionLength: number;
-  /**
-   * Half-width of the cone in radians. Total cone angle = 2 * visionHalfAngle.
-   * E.g. 0.3 rad ≈ 17° per side, so a ~34° wide cone.
-   */
+  /** Half-width of the cone in radians */
   visionHalfAngle: number;
-  /**
-   * Angle the cone's centerline makes with horizontal, in radians.
-   * 0 = looking straight ahead. Positive = looking slightly down (canvas y+).
-   */
+  /** Cone tilt vs. horizontal in radians (positive = looks down) */
   visionCenterAngle: number;
 };
 
+/**
+ * Stationary combat enemy. The knight cycles through:
+ *   idle → telegraph → striking → recovery → idle
+ * The player can press the attack button during `telegraph` to parry
+ * (stunning the knight) or strike during `idle`/`recovery`.
+ *
+ * Damage is dealt to the player only during the `striking` frames if
+ * the player is within `attackRange`.
+ */
+export type TemplarKnightDef = EnemyDefBase & {
+  kind: "templar-knight";
+  /** Fixed world x position. Knight does not move. */
+  x: number;
+  /** Starting hit points */
+  hp: number;
+  /** Frames of wind-up (the "tell"). Parryable during this window. */
+  attackTelegraphFrames: number;
+  /** Frames the strike is "live" — damages player if in range */
+  attackStrikeFrames: number;
+  /** Frames of recovery after a strike */
+  attackRecoveryFrames: number;
+  /** Frames of idle between recovery and next telegraph */
+  attackIdleFrames: number;
+  /** Damage range from knight's x */
+  attackRange: number;
+  /** Damage dealt to player per strike */
+  damage: number;
+  /** Frames the knight stays stunned after a parry */
+  stunFrames: number;
+};
+
+export type EnemyDef = TemplarGuardDef | TemplarKnightDef;
+export type EnemyKind = EnemyDef["kind"];
+
+// ===== Levels =====
+
 export type LevelDef = {
-  /** Stable identifier, e.g. "level-01" */
   id: string;
-  /** Chapter label shown in HUD, e.g. "Chapter VI" */
   chapter: string;
-  /** Short title shown in HUD */
   title: string;
-  /** Total world width in pixels */
   worldWidth: number;
-  /** Background image (served from /public) */
   backdrop: string;
-  /** Where the player spawns. y is always on the ground. */
   playerSpawn: { x: number };
   /**
-   * x at which the level is considered complete. Cross this and the
-   * "LEVEL COMPLETE" overlay appears. Typically sits just inside the
-   * end marker visual.
+   * Cross this x and the level is "complete". Place it past any combat
+   * gates so the player must defeat enemies to reach it.
    */
   endTriggerX: number;
+  /**
+   * Optional opening narration. Shown as a faded overlay at the start
+   * of the level. Each entry is a paragraph.
+   */
+  openingNarration?: string[];
   platforms: PlatformDef[];
   enemies: EnemyDef[];
 };

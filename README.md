@@ -4,7 +4,7 @@ A browser-playable 2D side-scroller, in the spirit of AC Chronicles. The Brother
 
 No install. No signup. Open the URL, the level loads, you play.
 
-## Current state — Level 01 prototype
+## Current state — Chapter I prototype
 
 | Key | Action |
 | --- | --- |
@@ -12,10 +12,16 @@ No install. No signup. Open the URL, the level loads, you play.
 | `Shift` (hold) | Sprint |
 | `Space` (or `W`) | Jump |
 | `S` | Crouch |
-| `E` | Stealth kill (when prompt appears) |
-| `R` | Restart the level |
+| `E` | Strike / parry / stealth kill (context-sensitive) |
+| `R` | Restart |
 
-A 2000px-wide scrolling world, a smooth-follow camera, five platforms, and one Templar guard patrolling the open stretch. Stay in his vision cone too long and you fade to black and respawn. Reach the end marker on the right and `LEVEL COMPLETE` shows — press `R` to play again. Crouch is still cosmetic; no climb, no cover, no second enemy yet.
+**Chapter I — Siege of Malacca.** Opening narration fades in. Walk right and you'll meet a single Templar knight. He cycles `idle → telegraph → strike → recovery`. Press `E` during his telegraph (sword raised) to parry — he stuns and you get free strikes. Miss the parry and you eat damage (3 HP shown top-right). Drop him and the end marker is yours.
+
+Stealth chapter (Level 01) is still in the repo — `lib/levels/level01.ts`. Swap `ACTIVE_LEVEL` in `pages/index.tsx` to play that instead.
+
+Two enemy kinds shipped:
+- `templar-guard` — patrol AI, vision cone, killable from behind or above (stealth)
+- `templar-knight` — stationary, attack phase machine, killable via parry + strikes (combat)
 
 ## Stack
 

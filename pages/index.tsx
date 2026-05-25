@@ -1,13 +1,13 @@
 import Head from "next/head";
 import dynamic from "next/dynamic";
-import { level01 } from "@/lib/levels";
+import { chapter01 } from "@/lib/levels";
 
 // Canvas + window access — client-only.
 const Platformer = dynamic(() => import("@/components/game/Platformer"), {
   ssr: false,
 });
 
-const ACTIVE_LEVEL = level01;
+const ACTIVE_LEVEL = chapter01;
 
 export default function Home() {
   return (
@@ -73,7 +73,7 @@ export default function Home() {
             <Key>S</Key> &nbsp;crouch
           </span>
           <span>
-            <Key>E</Key> &nbsp;stealth&nbsp;kill
+            <Key>E</Key> &nbsp;strike&nbsp;/&nbsp;parry&nbsp;/&nbsp;kill
           </span>
           <span>
             <Key>R</Key> &nbsp;restart
