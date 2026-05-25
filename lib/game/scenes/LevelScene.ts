@@ -79,6 +79,8 @@ export class LevelScene extends Phaser.Scene {
   private playerAnimTime = 0;
   private playerHp = MAX_PLAYER_HP;
   private playerHitFlashUntil = 0;
+  /** performance.now() timestamp at which the attack-thrust animation ends */
+  private playerAttackUntil = 0;
 
   // Enemies
   private enemyStates: EnemyState[] = [];
@@ -506,6 +508,7 @@ export class LevelScene extends Phaser.Scene {
         this.player.setPosition(enemy.x, this.groundY - P_HALF_H);
         this.player.body.setVelocity(0, 0);
       }
+      this.triggerAttackAnimation();
       return;
     }
 
@@ -517,9 +520,19 @@ export class LevelScene extends Phaser.Scene {
       if (s.dead) continue;
 
       // Parry beats strike if a telegraph is active and we're in range
-      if (tryParry(actor, s, d)) return;
-      if (applyPlayerStrike(actor, s, d, 1)) return;
+      if (tryParry(actor, s, d)) {
+        this.triggerAttackAnimation();
+        return;
+      }
+      if (applyPlayerStrike(actor, s, d, 1)) {
+        this.triggerAttackAnimation();
+        return;
+      }
     }
+  }
+
+  private triggerAttackAnimation() {
+    this.playerAttackUntil = performance.now() + 220;
   }
 
   private requestRestart() {
@@ -596,39 +609,68 @@ export class LevelScene extends Phaser.Scene {
   private redrawPlayer() {
     const g = this.playerFx;
     g.clear();
+    const now = performance.now();
     const cx = this.player.x;
     const footY = this.player.y + P_HALF_H;
     const onGround = this.player.body.blocked.down;
     const vx = this.player.body.velocity.x;
+
     const bob =
       onGround && vx !== 0 ? Math.abs(Math.sin(this.playerAnimTime)) * 1.5 : 0;
     const legSwing =
       onGround && vx !== 0 ? Math.sin(this.playerAnimTime) * 5 : 0;
+    // Arms swing opposite-phase from legs (natural walking)
+    const armSwing = onGround && vx !== 0 ? Math.sin(this.playerAnimTime) * 4 : 0;
 
-    const hit = performance.now() < this.playerHitFlashUntil;
-    const tint = hit ? 0xff5050 : 0x0a0a0a;
-    const tintAlpha = hit ? 0.85 : 1;
+    // Hit recoil — kick back along the world x axis (opposite of facing).
+    const hit = now < this.playerHitFlashUntil;
+    const hitProgress = hit ? 1 - (this.playerHitFlashUntil - now) / 220 : 0;
+    const hitOffset = hit
+      ? -Math.sin(hitProgress * Math.PI) * 5 * this.playerFacing
+      : 0;
+
+    // Attack thrust — front arm extends forward over ~220ms.
+    const attacking = now < this.playerAttackUntil;
+    const attackProgress = attacking
+      ? 1 - (this.playerAttackUntil - now) / 220
+      : 0;
+    const armExtend = attacking ? Math.sin(attackProgress * Math.PI) * 12 : 0;
+
+    // Palette — white silhouette so it pops on any backdrop.
+    const SKIN = hit ? 0xff5050 : 0xf2f2f2;
+    const HOOD = hit ? 0xff7070 : 0xc8c8c8;
+    const SASH = 0x7a1a1a;
+    const SKIN_ALPHA = hit ? 0.9 : 1;
 
     g.save();
-    g.translateCanvas(cx, footY - bob);
+    g.translateCanvas(cx + hitOffset, footY - bob);
     g.scaleCanvas(this.playerFacing, 1);
     if (this.playerCrouching) {
       g.translateCanvas(0, 14);
       g.scaleCanvas(1, 0.55);
     }
 
-    g.fillStyle(tint, tintAlpha);
+    // Back arm (drawn first so the body covers part of it)
+    g.fillStyle(SKIN, SKIN_ALPHA);
+    g.fillRect(-11 - armSwing * 0.3, -28, 4, 12);
+
+    // Legs
     g.fillRect(-7 + legSwing * 0.4, -14, 5, 14);
     g.fillRect(2 - legSwing * 0.4, -14, 5, 14);
+
+    // Body
     g.fillRect(-9, -32, 18, 18);
 
-    g.fillStyle(0x7a1a1a, 1);
+    // Sash (red — the AC accent stays red regardless of hit state)
+    g.fillStyle(SASH, 1);
     g.fillRect(-9, -22, 18, 3);
 
-    g.fillStyle(tint, tintAlpha);
+    // Head
+    g.fillStyle(SKIN, SKIN_ALPHA);
     g.fillCircle(0, -38, 8);
 
-    g.fillStyle(hit ? 0xff7070 : 0x171717, 1);
+    // Hood drape
+    g.fillStyle(HOOD, 1);
     g.beginPath();
     g.moveTo(-12, -42);
     g.lineTo(-7, -30);
@@ -637,8 +679,22 @@ export class LevelScene extends Phaser.Scene {
     g.closePath();
     g.fillPath();
 
+    // Face shadow under the hood (the iconic AC look)
     g.fillStyle(0x000000, 0.6);
     g.fillCircle(0, -36, 5.5);
+
+    // Front arm — either thrusting forward or swinging in place
+    g.fillStyle(SKIN, SKIN_ALPHA);
+    if (attacking) {
+      // Arm extends forward as a horizontal rect from the shoulder
+      g.fillRect(7, -26, 13 + armExtend, 4);
+      // Small "blade" suggestion at the tip
+      if (armExtend > 2) {
+        g.fillRect(18 + armExtend, -28, 4, 8);
+      }
+    } else {
+      g.fillRect(7 + armSwing * 0.3, -28, 4, 12);
+    }
 
     g.restore();
   }

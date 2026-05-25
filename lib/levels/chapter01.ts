@@ -12,7 +12,7 @@ export const chapter01: LevelDef = {
   chapter: "Chapter I",
   title: "Siege of Malacca",
   worldWidth: 1600,
-  backdrop: "/1.png", // Temasek/coastal — close enough for the wall-of-Malacca vibe
+  backdrop: "/chapter01-bg.png",
   playerSpawn: { x: 120 },
   endTriggerX: 1500,
   openingNarration: [
