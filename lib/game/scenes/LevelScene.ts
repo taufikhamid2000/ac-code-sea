@@ -17,6 +17,7 @@ import {
   tickEnemy,
   tryParry,
 } from "@/lib/engine/enemy";
+import { GameAudio } from "@/lib/game/audio";
 
 /**
  * The level scene. One scene runs a single LevelDef end-to-end.
@@ -49,8 +50,16 @@ const RESPAWN_THRESHOLD = 50;
 const FADE_MS = 500;
 const MAX_PLAYER_HP = 3;
 const NARRATION_MS = 6000;
+const OUTRO_MS = 6500;
 
-type Phase = "playing" | "respawning" | "complete";
+// Cannon timing range — random pick between these each cycle
+const CANNON_MIN_MS = 2800;
+const CANNON_MAX_MS = 5200;
+// Slow-motion duration after a kill
+const KILL_SLOWMO_MS = 280;
+const KILL_SLOWMO_SCALE = 0.3;
+
+type Phase = "playing" | "respawning" | "outro" | "complete";
 
 type ArcadeRect = Phaser.GameObjects.Rectangle & {
   body: Phaser.Physics.Arcade.Body;
@@ -94,7 +103,30 @@ export class LevelScene extends Phaser.Scene {
   private detectionText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
   private narrationContainer!: Phaser.GameObjects.Container;
+  private outroContainer!: Phaser.GameObjects.Container;
   private completeContainer!: Phaser.GameObjects.Container;
+
+  // Cannons (atmospheric)
+  private flashOverlay!: Phaser.GameObjects.Rectangle;
+  private cannonTimerMs = 0;
+  private nextCannonAtMs = 0;
+
+  // Particles
+  private hitSparksFx!: Phaser.GameObjects.Graphics;
+  private hitSparks: Array<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    life: number;
+    maxLife: number;
+  }> = [];
+
+  // Audio
+  private audio: GameAudio | null = null;
+  private prevLegSinSign = 0;
+  private wasGrounded = false;
+  private slowMoEndAt = 0;
 
   // Loop state
   private phase: Phase = "playing";
@@ -125,12 +157,31 @@ export class LevelScene extends Phaser.Scene {
     this.buildOverlays();
     this.bindInput();
     this.bindCamera();
+    this.bindAudio();
+
+    this.scheduleNextCannon();
 
     this.scale.on("resize", this.handleResize, this);
 
     if (this.levelDef.openingNarration?.length) {
       this.showNarration();
     }
+  }
+
+  private bindAudio() {
+    // Phaser's WebAudio sound manager exposes the AudioContext we need
+    // for procedural synthesis. If WebAudio isn't available (rare), we
+    // simply skip audio — the optional chain (this.audio?.foo()) handles it.
+    const sm = this.sound;
+    if (sm instanceof Phaser.Sound.WebAudioSoundManager) {
+      this.audio = new GameAudio(sm.context);
+    }
+  }
+
+  private scheduleNextCannon() {
+    this.cannonTimerMs = 0;
+    this.nextCannonAtMs =
+      CANNON_MIN_MS + Math.random() * (CANNON_MAX_MS - CANNON_MIN_MS);
   }
 
   // ===== Build =====
@@ -211,6 +262,25 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private buildOverlays() {
+    // Hit sparks are drawn in world space (below player) so they sit
+    // among the entities rather than over the HUD.
+    this.hitSparksFx = this.add.graphics().setDepth(50);
+
+    // Cannon flash overlay — screen-space, transparent until a cannon
+    // fires, when it flashes orange briefly.
+    this.flashOverlay = this.add
+      .rectangle(
+        0,
+        0,
+        this.scale.width,
+        this.scale.height,
+        0xff8030,
+        0
+      )
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(95);
+
     this.promptFx = this.add.graphics();
     this.promptText = this.add
       .text(0, 0, "E", {
@@ -247,6 +317,7 @@ export class LevelScene extends Phaser.Scene {
       .setDepth(102);
 
     this.buildNarrationOverlay();
+    this.buildOutroOverlay();
     this.buildCompleteOverlay();
   }
 
@@ -257,34 +328,82 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private buildNarrationOverlay() {
+    this.narrationContainer = this.buildNarrativeOverlay(
+      this.levelDef.openingNarration ?? [],
+      true // include chapter title card
+    );
+  }
+
+  private buildOutroOverlay() {
+    this.outroContainer = this.buildNarrativeOverlay(
+      this.levelDef.closingNarration ?? [],
+      false // no title card on outro — just the closing prose
+    );
+  }
+
+  /**
+   * Build a narrative text overlay. `withTitle` adds a chapter
+   * (e.g. "CHAPTER I") and title ("Siege of Malacca") at the top.
+   */
+  private buildNarrativeOverlay(lines: string[], withTitle: boolean) {
     const w = this.scale.width;
     const h = this.scale.height;
-    const lines = this.levelDef.openingNarration ?? [];
 
     const bg = this.add
-      .rectangle(0, 0, w, h, 0x000000, 0.55)
+      .rectangle(0, 0, w, h, 0x000000, 0.78)
       .setOrigin(0, 0);
 
-    const texts: Phaser.GameObjects.Text[] = [];
-    const lineGap = 24;
-    const blockHeight = lines.length * lineGap;
-    const startY = h / 2 - blockHeight / 2;
+    const elements: Phaser.GameObjects.GameObject[] = [bg];
+
+    const lineGap = 26;
+    const titleBlockHeight = withTitle ? 90 : 0;
+    const paragraphsHeight = lines.length * lineGap;
+    const totalHeight = titleBlockHeight + paragraphsHeight;
+    let y = h / 2 - totalHeight / 2;
+
+    if (withTitle) {
+      const chapterLabel = this.add
+        .text(w / 2, y, this.levelDef.chapter.toUpperCase(), {
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+          fontSize: "11px",
+          fontStyle: "bold",
+          color: "#eab308",
+        })
+        .setOrigin(0.5)
+        .setLetterSpacing(8);
+      y += 18;
+      const titleText = this.add
+        .text(w / 2, y, this.levelDef.title, {
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+          fontSize: "26px",
+          color: "#ffffff",
+        })
+        .setOrigin(0.5);
+      y += 28;
+      // A thin yellow divider under the title
+      const divider = this.add
+        .rectangle(w / 2, y, 80, 1, 0xeab308, 0.7)
+        .setOrigin(0.5);
+      y += 22;
+      elements.push(chapterLabel, titleText, divider);
+    }
+
     for (let i = 0; i < lines.length; i++) {
       const t = this.add
-        .text(w / 2, startY + i * lineGap, lines[i], {
+        .text(w / 2, y + i * lineGap, lines[i], {
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
           fontSize: "14px",
           color: "#ffffff",
           align: "center",
-          wordWrap: { width: Math.min(560, w - 40) },
+          wordWrap: { width: Math.min(620, w - 40) },
         })
         .setOrigin(0.5, 0.5)
-        .setAlpha(0.9);
-      texts.push(t);
+        .setAlpha(0.92);
+      elements.push(t);
     }
 
-    this.narrationContainer = this.add
-      .container(0, 0, [bg, ...texts])
+    return this.add
+      .container(0, 0, elements)
       .setScrollFactor(0)
       .setDepth(150)
       .setVisible(false);
@@ -300,7 +419,6 @@ export class LevelScene extends Phaser.Scene {
       ease: "Quad.out",
     });
     this.time.delayedCall(NARRATION_MS, () => this.dismissNarration());
-    // Also dismiss on any key press
     this.input.keyboard?.once("keydown", () => this.dismissNarration());
   }
 
@@ -312,6 +430,33 @@ export class LevelScene extends Phaser.Scene {
       duration: 400,
       ease: "Quad.in",
       onComplete: () => this.narrationContainer.setVisible(false),
+    });
+  }
+
+  private showOutro() {
+    if (!this.outroContainer) return;
+    this.outroContainer.setVisible(true).setAlpha(0);
+    this.tweens.add({
+      targets: this.outroContainer,
+      alpha: 1,
+      duration: 700,
+      ease: "Quad.out",
+    });
+    this.time.delayedCall(OUTRO_MS, () => this.advanceOutroToComplete());
+    this.input.keyboard?.once("keydown", () => this.advanceOutroToComplete());
+  }
+
+  private advanceOutroToComplete() {
+    if (this.phase !== "outro") return;
+    this.tweens.add({
+      targets: this.outroContainer,
+      alpha: 0,
+      duration: 500,
+      ease: "Quad.in",
+      onComplete: () => {
+        this.outroContainer.setVisible(false);
+        this.startComplete();
+      },
     });
   }
 
@@ -382,12 +527,24 @@ export class LevelScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, this.levelDef.worldWidth, h);
     this.detectionText.setPosition(w / 2, 56);
     this.hpText.setPosition(w - 16, 16);
+    this.flashOverlay.setSize(w, h);
   }
 
   // ===== Loop =====
 
   update() {
+    // Slow-mo cleanup — restore real-time when the kill window expires.
+    if (this.slowMoEndAt > 0 && performance.now() >= this.slowMoEndAt) {
+      this.physics.world.timeScale = 1;
+      this.tweens.timeScale = 1;
+      this.slowMoEndAt = 0;
+    }
+
     if (this.phase === "playing") this.updatePlaying();
+    // Sparks fade even outside playing (so kill sparks finish during slow-mo)
+    if (this.phase !== "playing") {
+      this.updateHitSparks(this.game.loop.delta);
+    }
     this.redrawAll();
   }
 
@@ -395,6 +552,7 @@ export class LevelScene extends Phaser.Scene {
     const sprinting = this.keys.shift.isDown;
     const speed = sprinting ? RUN_SPEED : WALK_SPEED;
     const grounded = this.player.body.blocked.down;
+    const dtMs = this.game.loop.delta;
 
     this.playerCrouching = this.keys.s.isDown && grounded;
 
@@ -416,7 +574,24 @@ export class LevelScene extends Phaser.Scene {
       !this.playerCrouching
     ) {
       this.player.body.setVelocityY(JUMP_VEL_Y);
+      this.audio?.playJump();
     }
+
+    // Landing — wasGrounded false → grounded true
+    if (grounded && !this.wasGrounded) {
+      this.audio?.playLand();
+    }
+    this.wasGrounded = grounded;
+
+    // Cannons (only during active gameplay)
+    this.cannonTimerMs += dtMs;
+    if (this.cannonTimerMs >= this.nextCannonAtMs) {
+      this.fireCannon();
+      this.scheduleNextCannon();
+    }
+
+    // Hit-spark particles
+    this.updateHitSparks(dtMs);
 
     // Enemy AI
     for (let i = 0; i < this.enemyStates.length; i++) {
@@ -459,8 +634,16 @@ export class LevelScene extends Phaser.Scene {
     const vx = this.player.body.velocity.x;
     if (vx !== 0 && grounded) {
       this.playerAnimTime += sprinting ? 0.28 : 0.18;
+      // Footstep on leg-swing zero crossing
+      const sin = Math.sin(this.playerAnimTime);
+      const sign = sin > 0 ? 1 : sin < 0 ? -1 : 0;
+      if (sign !== 0 && sign !== this.prevLegSinSign) {
+        this.audio?.playFootstep();
+      }
+      this.prevLegSinSign = sign;
     } else {
       this.playerAnimTime = 0;
+      this.prevLegSinSign = 0;
     }
 
     // Phase transitions
@@ -469,7 +652,7 @@ export class LevelScene extends Phaser.Scene {
     } else if (this.playerHp <= 0) {
       this.startRespawn();
     } else if (this.player.x >= this.levelDef.endTriggerX) {
-      this.startComplete();
+      this.startOutro();
     }
   }
 
@@ -478,7 +661,9 @@ export class LevelScene extends Phaser.Scene {
     this.playerHp = Math.max(0, this.playerHp - amount);
     this.hpText.setText(this.renderHpString(this.playerHp));
     this.playerHitFlashUntil = performance.now() + 220;
-    this.cameras.main.shake(120, 0.004);
+    this.cameras.main.shake(150, 0.006);
+    this.audio?.playHurt();
+    this.spawnHitSparks(this.player.x, this.player.y, 6, 0xff5050);
   }
 
   /**
@@ -509,6 +694,8 @@ export class LevelScene extends Phaser.Scene {
         this.player.body.setVelocity(0, 0);
       }
       this.triggerAttackAnimation();
+      this.audio?.playStealthKill();
+      this.triggerKillEffect(enemy.x, this.groundY - 28);
       return;
     }
 
@@ -522,13 +709,33 @@ export class LevelScene extends Phaser.Scene {
       // Parry beats strike if a telegraph is active and we're in range
       if (tryParry(actor, s, d)) {
         this.triggerAttackAnimation();
+        this.audio?.playParry();
+        this.cameras.main.shake(120, 0.005);
+        this.spawnHitSparks(s.x, this.groundY - 30, 6, 0xffd84a);
         return;
       }
       if (applyPlayerStrike(actor, s, d, 1)) {
         this.triggerAttackAnimation();
+        if (s.dead) {
+          this.audio?.playKill();
+          this.triggerKillEffect(s.x, this.groundY - 30);
+        } else {
+          this.audio?.playStrike();
+          this.spawnHitSparks(s.x, this.groundY - 30, 6, 0xeab308);
+          this.cameras.main.shake(80, 0.003);
+        }
         return;
       }
     }
+  }
+
+  private triggerKillEffect(x: number, y: number) {
+    this.spawnHitSparks(x, y, 16, 0xeab308);
+    this.cameras.main.shake(220, 0.01);
+    // Slow-mo: both physics + tweens use timeScale where <1 = slower.
+    this.physics.world.timeScale = KILL_SLOWMO_SCALE;
+    this.tweens.timeScale = KILL_SLOWMO_SCALE;
+    this.slowMoEndAt = performance.now() + KILL_SLOWMO_MS;
   }
 
   private triggerAttackAnimation() {
@@ -561,6 +768,19 @@ export class LevelScene extends Phaser.Scene {
     );
   }
 
+  private startOutro() {
+    if (this.phase === "outro" || this.phase === "complete") return;
+    const hasOutro = (this.levelDef.closingNarration ?? []).length > 0;
+    if (!hasOutro) {
+      // No closing narration — go straight to complete.
+      this.startComplete();
+      return;
+    }
+    this.phase = "outro";
+    this.player.body.setVelocity(0, 0);
+    this.showOutro();
+  }
+
   private startComplete() {
     if (this.phase === "complete") return;
     this.phase = "complete";
@@ -574,6 +794,71 @@ export class LevelScene extends Phaser.Scene {
     });
   }
 
+  private fireCannon() {
+    this.audio?.playCannon();
+    // Camera shake — keep it modest so it doesn't ruin combat reading
+    this.cameras.main.shake(280, 0.0035);
+    // Brief orange flash overlay
+    this.flashOverlay.setAlpha(0.35);
+    this.tweens.add({
+      targets: this.flashOverlay,
+      alpha: 0,
+      duration: 320,
+      ease: "Quad.in",
+    });
+  }
+
+  private spawnHitSparks(
+    x: number,
+    y: number,
+    count: number,
+    color: number = 0xeab308
+  ) {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+      const speed = 90 + Math.random() * 140;
+      this.hitSparks.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 60,
+        life: 320,
+        maxLife: 320,
+      });
+    }
+    // Store color on the most-recent batch via the alpha trick — we
+    // actually pass color into the draw, so stash it on each particle.
+    // (Simpler: store color per particle. Refactoring inline:)
+    const start = this.hitSparks.length - count;
+    for (let i = start; i < this.hitSparks.length; i++) {
+      (this.hitSparks[i] as unknown as { color: number }).color = color;
+    }
+  }
+
+  private updateHitSparks(dtMs: number) {
+    const dt = dtMs / 1000;
+    for (let i = this.hitSparks.length - 1; i >= 0; i--) {
+      const s = this.hitSparks[i];
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy += 720 * dt; // gravity
+      s.vx *= 0.96; // drag
+      s.life -= dtMs;
+      if (s.life <= 0) this.hitSparks.splice(i, 1);
+    }
+  }
+
+  private drawHitSparks() {
+    const g = this.hitSparksFx;
+    g.clear();
+    for (const s of this.hitSparks) {
+      const alpha = Math.max(0, s.life / s.maxLife);
+      const color = (s as unknown as { color: number }).color ?? 0xeab308;
+      g.fillStyle(color, alpha);
+      g.fillRect(s.x - 1.5, s.y - 1.5, 3, 3);
+    }
+  }
+
   private resetLevel() {
     this.player.setPosition(
       this.levelDef.playerSpawn.x,
@@ -585,13 +870,24 @@ export class LevelScene extends Phaser.Scene {
     this.playerAnimTime = 0;
     this.playerHp = MAX_PLAYER_HP;
     this.hpText.setText(this.renderHpString(this.playerHp));
+    this.prevLegSinSign = 0;
+    this.wasGrounded = false;
 
     for (let i = 0; i < this.enemyStates.length; i++) {
       Object.assign(this.enemyStates[i], spawnEnemy(this.levelDef.enemies[i]));
     }
     this.detectionFrames = 0;
+    this.hitSparks.length = 0;
     this.completeContainer.setVisible(false);
+    this.outroContainer.setVisible(false);
     this.dismissNarration();
+
+    // Restore time scale in case respawn fires mid slow-mo
+    this.physics.world.timeScale = 1;
+    this.tweens.timeScale = 1;
+    this.slowMoEndAt = 0;
+
+    this.scheduleNextCannon();
   }
 
   // ===== Drawing =====
@@ -602,6 +898,7 @@ export class LevelScene extends Phaser.Scene {
       this.redrawCone(i);
       this.redrawEnemy(i);
     }
+    this.drawHitSparks();
     this.redrawStealthPrompt();
     this.redrawDetectionOverlay();
   }

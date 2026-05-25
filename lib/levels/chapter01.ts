@@ -21,6 +21,12 @@ export const chapter01: LevelDef = {
     "Below, a young commander falters against a Templar knight.",
     "He has not the steel for this. You do.",
   ],
+  closingNarration: [
+    "The Templar falls. The young commander rises.",
+    "His intervention turns the tide — but at a great personal cost.",
+    "Hang Tuah collapses, his vision blurring.",
+    "The seeds of courage he planted will guard Malacca long after he is gone.",
+  ],
   platforms: [], // Flat ground for Chapter I — combat, not parkour
   enemies: [
     {

@@ -97,6 +97,12 @@ export type LevelDef = {
    * of the level. Each entry is a paragraph.
    */
   openingNarration?: string[];
+  /**
+   * Optional closing narration. Shown after the player crosses
+   * endTriggerX, before the LEVEL COMPLETE overlay. Used to land the
+   * chapter's emotional beat.
+   */
+  closingNarration?: string[];
   platforms: PlatformDef[];
   enemies: EnemyDef[];
 };
