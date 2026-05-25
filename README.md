@@ -20,9 +20,9 @@ A 2000px-wide scrolling world, a smooth-follow camera, five platforms, and one T
 ## Stack
 
 - Next.js 13 (pages router)
-- HTML5 Canvas, raw 2D context
-- React owns the component tree; the game loop is plain `requestAnimationFrame`
-- Tailwind for the chrome
+- **Phaser 3** for rendering, physics, scenes, camera, input. Loaded lazily so the initial HTML stays small.
+- Tailwind for the page chrome (title chip, control HUD)
+- Pure-TS engine module (`lib/engine/enemy.ts`) — Phaser-agnostic, portable to any renderer
 
 ## Run
 
@@ -36,10 +36,13 @@ Open `http://localhost:3000`. Click the canvas so it has focus, then press keys.
 ## Layout
 
 ```
-components/game/Platformer.tsx  -> engine: canvas, game loop, physics, draw
-lib/engine/enemy.ts             -> enemy state machine (pure, no canvas)
+components/game/Platformer.tsx  -> React wrapper, lazy-loads Phaser
+lib/game/scenes/LevelScene.ts   -> Phaser scene — owns physics, input,
+                                   camera, drawing
+lib/engine/enemy.ts             -> Pure state + math (renderer-agnostic):
                                    spawnEnemy, tickEnemy,
-                                   isInVisionCone, findStealthKillTarget, killEnemy
+                                   isInVisionCone, findStealthKillTarget,
+                                   killEnemy
 lib/levels/types.ts             -> LevelDef, PlatformDef, EnemyDef, EnemyKind
 lib/levels/level01.ts           -> Level 01 data
 lib/levels/index.ts             -> barrel export
@@ -51,11 +54,12 @@ public/1.png ... 9.png          -> backdrop art (placeholder)
 
 The split is deliberate:
 
-- **`lib/engine/`** is pure logic — functions that take state and mutate it. No canvas, no React. Easy to unit-test, easy to call from a different harness later (e.g., a level editor preview).
-- **`lib/levels/`** is data — what's in a level, not how it plays.
-- **`components/game/Platformer.tsx`** is the engine glue: input → state updates → canvas draw. It calls into `lib/engine/` and consumes `lib/levels/`.
+- **`lib/engine/`** is pure logic — functions that take state and return state or booleans. No canvas, no React, no Phaser. Survived the Phaser migration unchanged.
+- **`lib/levels/`** is data — what's in a level, not how it plays. Also Phaser-agnostic.
+- **`lib/game/scenes/`** is the Phaser glue: it consumes a `LevelDef`, drives the pure logic, and translates state into Phaser GameObjects each frame.
+- **`components/game/Platformer.tsx`** is the React boundary: a `useEffect` that lazy-imports Phaser, boots a `Phaser.Game`, and tears it down on unmount.
 
-When we add a new enemy type (archer, brute, boss), we add a new value to `EnemyKind`, extend `EnemyDef` if it needs extra fields, and add a draw function. `findStealthKillTarget`, `tickEnemy`, and `isInVisionCone` keep working without changes.
+When we add a new enemy type (archer, brute, boss), we add a new value to `EnemyKind`, extend `EnemyDef` if needed, and add a draw method on the scene. `findStealthKillTarget`, `tickEnemy`, and `isInVisionCone` keep working without changes.
 
 ## Adding a new level
 
@@ -122,7 +126,7 @@ Press `E` while the prompt is up and they drop. Dead enemies stop ticking, don't
 
 ## Game loop
 
-State machine in Platformer.tsx:
+State machine in `LevelScene`:
 
 ```
 playing ──spotted ≥ RESPAWN_THRESHOLD──▶ respawning ──fade in done──▶ playing
@@ -131,9 +135,7 @@ playing ──R pressed───────────────────
 complete ──R pressed───────────────────▶ respawning
 ```
 
-`respawning` is a single transition with three sub-stages over `FADE_OUT_FRAMES + FADE_IN_FRAMES` frames (60 by default): fade to black, snap state via `resetLevel()` mid-fade, fade back in. `resetLevel()` brings dead enemies back to life — a respawn is a full level reset.
-
-Detection decays when you break line of sight (down 2 per frame vs. up 1 per frame), so brief sightings don't immediately kill you.
+`respawning` uses Phaser's camera fadeOut/fadeIn — `resetLevel()` runs between the two and brings dead enemies back. Detection decays when you break line of sight (down 2 per frame vs. up 1 per frame), so brief sightings don't immediately kill you.
 
 ## What's next
 
