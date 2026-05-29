@@ -97,6 +97,26 @@ export default function LevelEditor() {
     }
   }
 
+  // Delete / Backspace removes the selected platform or enemy — unless the
+  // user is typing in a form field.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) {
+        return;
+      }
+      if (selection?.type === "platform" || selection?.type === "enemy") {
+        e.preventDefault();
+        deleteSelected();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection]);
+
   async function copyTs() {
     try {
       await navigator.clipboard.writeText(toLevelTs(level));
