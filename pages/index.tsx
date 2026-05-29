@@ -1,15 +1,10 @@
 import Head from "next/head";
-import dynamic from "next/dynamic";
+import Link from "next/link";
 import { chapter01 } from "@/lib/levels";
 
-// Canvas + window access — client-only.
-const Platformer = dynamic(() => import("@/components/game/Platformer"), {
-  ssr: false,
-});
+const BACKDROP = chapter01.backdrop;
 
-const ACTIVE_LEVEL = chapter01;
-
-export default function Home() {
+export default function Menu() {
   return (
     <>
       <Head>
@@ -28,66 +23,57 @@ export default function Home() {
           property="og:description"
           content="The Brotherhood, in pre-colonial Southeast Asia."
         />
-        <meta property="og:image" content={ACTIVE_LEVEL.backdrop} />
+        <meta property="og:image" content={BACKDROP} />
       </Head>
 
-      <main className="relative h-[100dvh] w-full select-none overflow-hidden bg-black text-white antialiased">
+      <main className="relative flex h-[100dvh] w-full select-none flex-col items-center justify-center overflow-hidden bg-black text-white antialiased">
         {/* Backdrop */}
         <div
           aria-hidden
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${ACTIVE_LEVEL.backdrop})` }}
+          style={{ backgroundImage: `url(${BACKDROP})` }}
         />
         <div
           aria-hidden
-          className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/90"
+          className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/55 to-black/90"
         />
 
-        {/* Game canvas */}
-        <div className="absolute inset-0">
-          <Platformer level={ACTIVE_LEVEL} />
-        </div>
-
-        {/* Title chip */}
-        <div className="pointer-events-none absolute left-5 top-4 z-10 md:left-10 md:top-6">
-          <p className="text-[10px] font-medium uppercase tracking-[6px] text-white/60">
+        {/* Title */}
+        <div className="relative z-10 flex flex-col items-center text-center">
+          <p className="text-xs font-medium uppercase tracking-[10px] text-white/55">
             AC · Code SEA
           </p>
-          <p className="mt-1 text-[9px] uppercase tracking-[4px] text-yellow-500/70">
-            {ACTIVE_LEVEL.chapter} · {ACTIVE_LEVEL.title}
+          <h1 className="mt-3 font-serif text-4xl tracking-wide text-white md:text-6xl">
+            Siege of Malacca
+          </h1>
+          <div className="mt-3 h-px w-24 bg-yellow-500/60" />
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-white/55">
+            The Brotherhood, in pre-colonial Southeast Asia. No install, no
+            signup — just play.
           </p>
+
+          {/* Buttons */}
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <Link
+              href="/play"
+              className="w-56 rounded border border-yellow-500/70 bg-yellow-500/90 px-6 py-3 text-center text-sm font-semibold uppercase tracking-[4px] text-black transition hover:bg-yellow-400"
+            >
+              Start
+            </Link>
+            <Link
+              href="/editor"
+              className="w-56 rounded border border-white/25 px-6 py-3 text-center text-sm font-semibold uppercase tracking-[4px] text-white/80 transition hover:bg-white/10 hover:text-white"
+            >
+              Level Editor
+            </Link>
+          </div>
         </div>
 
-        {/* Controls HUD */}
-        <div className="pointer-events-none absolute bottom-5 right-5 z-10 flex flex-col items-end gap-1 text-[11px] uppercase tracking-[3px] text-white/55 md:bottom-8 md:right-10">
-          <span>
-            <Key>A</Key> / <Key>D</Key> &nbsp;move
-          </span>
-          <span>
-            <Key>Shift</Key> &nbsp;sprint
-          </span>
-          <span>
-            <Key>Space</Key> &nbsp;jump
-          </span>
-          <span>
-            <Key>S</Key> &nbsp;crouch
-          </span>
-          <span>
-            <Key>E</Key> &nbsp;strike&nbsp;/&nbsp;parry&nbsp;/&nbsp;kill
-          </span>
-          <span>
-            <Key>R</Key> &nbsp;restart
-          </span>
-        </div>
+        {/* Footer hint */}
+        <p className="absolute bottom-6 z-10 text-[10px] uppercase tracking-[4px] text-white/35">
+          Chapter I · 1511
+        </p>
       </main>
     </>
-  );
-}
-
-function Key({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-block min-w-[1.4em] rounded border border-white/25 bg-white/5 px-1.5 py-0.5 text-center font-mono text-[10px] text-white/80">
-      {children}
-    </kbd>
   );
 }
