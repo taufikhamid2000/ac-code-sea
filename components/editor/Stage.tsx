@@ -20,7 +20,7 @@ type Drag =
   | { kind: "platform-move"; i: number; ox: number; ody: number }
   | { kind: "platform-w"; i: number; ow: number }
   | { kind: "platform-h"; i: number; oh: number }
-  | { kind: "enemy-move"; i: number; ox: number }
+  | { kind: "enemy-move"; i: number; ox: number; ody: number }
   | { kind: "guard-min"; i: number; omin: number }
   | { kind: "guard-max"; i: number; omax: number }
   | { kind: "spawn" }
@@ -67,13 +67,16 @@ export default function Stage({
           break;
         case "enemy-move": {
           const nx = Math.max(0, g(d.ox + dxWorld));
+          // Dragging up on screen raises the enemy → larger dy.
+          const ndy = Math.max(0, g(d.ody - dyWorld));
           const en = level.enemies[d.i];
-          if (en.kind === "templar-knight") patchEnemy(d.i, { x: nx });
+          if (en.kind === "templar-knight") patchEnemy(d.i, { x: nx, dy: ndy });
           else {
             const half = (en.patrolMaxX - en.patrolMinX) / 2;
             patchEnemy(d.i, {
               patrolMinX: Math.max(0, Math.round(nx - half)),
               patrolMaxX: Math.round(nx + half),
+              dy: ndy,
             });
           }
           break;
@@ -148,7 +151,7 @@ export default function Stage({
                 key={i}
                 guard={e}
                 cx={sx(enemyAnchorX(e))}
-                eyeY={sy(GROUND_Y - GUARD_EYE_DY)}
+                eyeY={sy(GROUND_Y - GUARD_EYE_DY - (e.dy ?? 0))}
                 scale={scale}
                 selected={selection?.type === "enemy" && selection.index === i}
               />
@@ -202,6 +205,7 @@ export default function Stage({
         {level.enemies.map((e, i) => {
           const sel = selection?.type === "enemy" && selection.index === i;
           const ax = enemyAnchorX(e);
+          const edy = e.dy ?? 0;
           const isGuard = e.kind === "templar-guard";
           return (
             <div key={i}>
@@ -209,14 +213,14 @@ export default function Stage({
                 <>
                   <EndpointFlag
                     x={sx(e.patrolMinX)}
-                    groundY={groundScreenY}
+                    groundY={groundScreenY - sy(edy)}
                     onPointerDown={(ev) =>
                       startDrag(ev, { kind: "guard-min", i, omin: e.patrolMinX })
                     }
                   />
                   <EndpointFlag
                     x={sx(e.patrolMaxX)}
-                    groundY={groundScreenY}
+                    groundY={groundScreenY - sy(edy)}
                     onPointerDown={(ev) =>
                       startDrag(ev, { kind: "guard-max", i, omax: e.patrolMaxX })
                     }
@@ -226,7 +230,7 @@ export default function Stage({
               <div
                 onPointerDown={(ev) => {
                   onSelect({ type: "enemy", index: i });
-                  startDrag(ev, { kind: "enemy-move", i, ox: ax });
+                  startDrag(ev, { kind: "enemy-move", i, ox: ax, ody: edy });
                 }}
                 title={e.kind}
                 className={`absolute flex -translate-x-1/2 cursor-move items-center justify-center rounded-sm border text-[10px] font-bold ${
@@ -234,7 +238,7 @@ export default function Stage({
                 } ${isGuard ? "bg-orange-500/70" : "bg-red-600/70"}`}
                 style={{
                   left: sx(ax),
-                  top: groundScreenY - sy(60),
+                  top: groundScreenY - sy(edy) - sy(60),
                   width: sx(28),
                   height: sy(60),
                 }}

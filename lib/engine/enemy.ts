@@ -23,6 +23,8 @@ import type {
 
 type EnemyStateBase = {
   x: number;
+  /** Pixels above the ground line the enemy stands on (0 = ground). */
+  dy: number;
   facing: 1 | -1;
   animTime: number;
   /** True after a kill. Stops ticking, sight, and threat. */
@@ -91,6 +93,7 @@ function spawnTemplarGuard(def: TemplarGuardDef): TemplarGuardState {
   return {
     kind: "templar-guard",
     x: def.startFacing === 1 ? def.patrolMinX : def.patrolMaxX,
+    dy: def.dy ?? 0,
     facing: def.startFacing,
     pauseFrames: 0,
     animTime: 0,
@@ -103,6 +106,7 @@ function spawnTemplarKnight(def: TemplarKnightDef): TemplarKnightState {
   return {
     kind: "templar-knight",
     x: def.x,
+    dy: def.dy ?? 0,
     facing: def.startFacing,
     animTime: 0,
     dead: false,
@@ -205,7 +209,7 @@ export function isInVisionCone(
   }
 
   const eyeX = state.x;
-  const eyeY = groundY - EYE_DY_BY_KIND[state.kind];
+  const eyeY = groundY - state.dy - EYE_DY_BY_KIND[state.kind];
   const targetX = target.x;
   const targetY = target.y - SIGHT_TARGET_DY;
 
@@ -238,7 +242,7 @@ export function findStealthKillTarget(
     // enemies (knights) need to be fought in their own loop.
     if (e.kind !== "templar-guard") continue;
 
-    const enemyY = groundY;
+    const enemyY = groundY - e.dy;
     const dx = actor.x - e.x;
     const dyDown = actor.y - enemyY;
     const absDx = Math.abs(dx);

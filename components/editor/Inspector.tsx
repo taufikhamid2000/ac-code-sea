@@ -136,6 +136,7 @@ function KnightForm({
       <Head>Knight #{idx}</Head>
       <FacingRow value={e.startFacing} onChange={(v) => set({ startFacing: v })} />
       <NumRow label="x" value={e.x} onChange={(v) => set({ x: v })} />
+      <NumRow label="dy (height)" value={e.dy ?? 0} onChange={(v) => set({ dy: v })} />
       <NumRow label="hp" value={e.hp} onChange={(v) => set({ hp: v })} />
       <NumRow label="attackRange" value={e.attackRange} onChange={(v) => set({ attackRange: v })} />
       <NumRow label="damage" value={e.damage} onChange={(v) => set({ damage: v })} />
@@ -164,6 +165,7 @@ function GuardForm({
     <>
       <Head>Guard #{idx}</Head>
       <FacingRow value={e.startFacing} onChange={(v) => set({ startFacing: v })} />
+      <NumRow label="dy (height)" value={e.dy ?? 0} onChange={(v) => set({ dy: v })} />
       <NumRow label="patrolMinX" value={e.patrolMinX} onChange={(v) => set({ patrolMinX: v })} />
       <NumRow label="patrolMaxX" value={e.patrolMaxX} onChange={(v) => set({ patrolMaxX: v })} />
       <NumRow label="speed" value={e.speed} step={0.1} onChange={(v) => set({ speed: v })} />

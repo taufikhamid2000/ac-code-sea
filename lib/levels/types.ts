@@ -22,6 +22,12 @@ export type PlatformDef = {
 type EnemyDefBase = {
   /** Initial facing direction: 1 = right, -1 = left */
   startFacing: 1 | -1;
+  /**
+   * Pixels above the ground line the enemy stands on. 0 (or omitted) =
+   * ground level. Use this to place an enemy on a platform — match it
+   * to the platform's `dy`.
+   */
+  dy?: number;
 };
 
 /**

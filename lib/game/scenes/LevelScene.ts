@@ -690,12 +690,12 @@ export class LevelScene extends Phaser.Scene {
       const enemy = this.enemyStates[stealthTarget.enemyIdx];
       killEnemy(enemy);
       if (stealthTarget.kind === "air") {
-        this.player.setPosition(enemy.x, this.groundY - P_HALF_H);
+        this.player.setPosition(enemy.x, this.groundY - enemy.dy - P_HALF_H);
         this.player.body.setVelocity(0, 0);
       }
       this.triggerAttackAnimation();
       this.audio?.playStealthKill();
-      this.triggerKillEffect(enemy.x, this.groundY - 28);
+      this.triggerKillEffect(enemy.x, this.groundY - enemy.dy - 28);
       return;
     }
 
@@ -711,17 +711,17 @@ export class LevelScene extends Phaser.Scene {
         this.triggerAttackAnimation();
         this.audio?.playParry();
         this.cameras.main.shake(120, 0.005);
-        this.spawnHitSparks(s.x, this.groundY - 30, 6, 0xffd84a);
+        this.spawnHitSparks(s.x, this.groundY - s.dy - 30, 6, 0xffd84a);
         return;
       }
       if (applyPlayerStrike(actor, s, d, 1)) {
         this.triggerAttackAnimation();
         if (s.dead) {
           this.audio?.playKill();
-          this.triggerKillEffect(s.x, this.groundY - 30);
+          this.triggerKillEffect(s.x, this.groundY - s.dy - 30);
         } else {
           this.audio?.playStrike();
-          this.spawnHitSparks(s.x, this.groundY - 30, 6, 0xeab308);
+          this.spawnHitSparks(s.x, this.groundY - s.dy - 30, 6, 0xeab308);
           this.cameras.main.shake(80, 0.003);
         }
         return;
@@ -1006,7 +1006,7 @@ export class LevelScene extends Phaser.Scene {
 
     const alerted = this.detectionFrames > 0;
     const eyeX = state.x;
-    const eyeY = this.groundY - GUARD_EYE_DY;
+    const eyeY = this.groundY - state.dy - GUARD_EYE_DY;
 
     g.save();
     g.translateCanvas(eyeX, eyeY);
@@ -1057,7 +1057,7 @@ export class LevelScene extends Phaser.Scene {
     const legSwing = s.pauseFrames === 0 ? Math.sin(s.animTime) * 4 : 0;
 
     g.save();
-    g.translateCanvas(s.x, this.groundY - bob);
+    g.translateCanvas(s.x, this.groundY - s.dy - bob);
     g.scaleCanvas(s.facing, 1);
 
     g.fillStyle(0x3a1414, 1);
@@ -1088,7 +1088,7 @@ export class LevelScene extends Phaser.Scene {
   ) {
     const settle = Math.min(1, s.deathTimer / 15);
     g.save();
-    g.translateCanvas(s.x, this.groundY);
+    g.translateCanvas(s.x, this.groundY - s.dy);
     g.scaleCanvas(s.facing, 1);
     const bodyW = 26;
     const bodyH = 6 + (1 - settle) * 6;
@@ -1121,7 +1121,7 @@ export class LevelScene extends Phaser.Scene {
       : 0;
 
     g.save();
-    g.translateCanvas(s.x, this.groundY);
+    g.translateCanvas(s.x, this.groundY - s.dy);
     g.scaleCanvas(s.facing, 1);
 
     // Stunned = slumped slightly forward
@@ -1199,7 +1199,7 @@ export class LevelScene extends Phaser.Scene {
   ) {
     const settle = Math.min(1, s.deathTimer / 18);
     g.save();
-    g.translateCanvas(s.x, this.groundY);
+    g.translateCanvas(s.x, this.groundY - s.dy);
     g.scaleCanvas(s.facing, 1);
     const bodyW = 34;
     const bodyH = 8 + (1 - settle) * 10;
@@ -1233,7 +1233,7 @@ export class LevelScene extends Phaser.Scene {
     }
     const enemy = this.enemyStates[target.enemyIdx];
     const px = enemy.x;
-    const py = this.groundY - 62;
+    const py = this.groundY - enemy.dy - 62;
     const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 220);
 
     g.setAlpha(pulse);
