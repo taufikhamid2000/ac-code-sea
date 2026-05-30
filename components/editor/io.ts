@@ -2,6 +2,7 @@ import type {
   LevelDef,
   PlatformDef,
   EnemyDef,
+  NpcDef,
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
@@ -61,6 +62,17 @@ export function defaultGuard(x: number): TemplarGuardDef {
     visionLength: 260,
     visionHalfAngle: 0.35,
     visionCenterAngle: 0.12,
+  };
+}
+
+export function defaultNpc(x: number): NpcDef {
+  return {
+    kind: "npc",
+    role: "talk",
+    x: Math.round(x),
+    startFacing: 1,
+    label: "NPC",
+    lines: [],
   };
 }
 
@@ -170,6 +182,15 @@ function validateLevel(v: unknown): string | null {
     const kind = (e as Record<string, unknown>)?.kind;
     if (kind !== "templar-knight" && kind !== "templar-guard")
       return `Unknown enemy kind: ${String(kind)}.`;
+  }
+  if (l.npcs !== undefined) {
+    if (!Array.isArray(l.npcs)) return '"npcs" must be an array.';
+    for (const n of l.npcs as unknown[]) {
+      const o = n as Record<string, unknown>;
+      if (o?.kind !== "npc") return `Unknown npc kind: ${String(o?.kind)}.`;
+      if (o.role !== "decor" && o.role !== "talk" && o.role !== "rescue")
+        return `Unknown npc role: ${String(o.role)}.`;
+    }
   }
   return null;
 }

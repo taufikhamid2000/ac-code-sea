@@ -84,6 +84,41 @@ export type TemplarKnightDef = EnemyDefBase & {
 export type EnemyDef = TemplarGuardDef | TemplarKnightDef;
 export type EnemyKind = EnemyDef["kind"];
 
+// ===== NPCs =====
+
+/**
+ * What an NPC does in-game:
+ *   - "decor"  : set dressing. Stands and faces. No interaction.
+ *   - "talk"   : press the action key nearby to show `lines` as dialogue.
+ *   - "rescue" : like talk, but reaching it also marks it rescued (the
+ *                Chapter I "boy" beat). Fires its `lines`, then waves off.
+ */
+export type NpcRole = "decor" | "talk" | "rescue";
+
+/**
+ * A non-combat character. NPCs never fight or see — they're passive and
+ * optionally interactive. Allies that fight (the brothers) and bosses
+ * (Jebat) are deliberately NOT NPCs; they belong with the enemy/combat
+ * model.
+ */
+export type NpcDef = {
+  kind: "npc";
+  role: NpcRole;
+  /** Fixed world x position. */
+  x: number;
+  /** Pixels above the ground line (0 = ground). Match a platform's dy. */
+  dy?: number;
+  /** Facing direction: 1 = right, -1 = left */
+  startFacing: 1 | -1;
+  /** Short name drawn above the figure (e.g. "Boy", "Bendahara"). */
+  label?: string;
+  /**
+   * Dialogue shown on interaction for "talk"/"rescue". Each entry is a
+   * paragraph. Ignored for "decor".
+   */
+  lines?: string[];
+};
+
 // ===== Levels =====
 
 export type LevelDef = {
@@ -111,4 +146,6 @@ export type LevelDef = {
   closingNarration?: string[];
   platforms: PlatformDef[];
   enemies: EnemyDef[];
+  /** Non-combat characters (set dressing, dialogue, rescue beats). */
+  npcs?: NpcDef[];
 };

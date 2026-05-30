@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
-import type { LevelDef, EnemyDef, PlatformDef } from "@/lib/levels/types";
+import type {
+  LevelDef,
+  EnemyDef,
+  PlatformDef,
+  NpcDef,
+} from "@/lib/levels/types";
 import { GROUND_Y, STAGE_WORLD_HEIGHT, snap, type Selection } from "./model";
 import { enemyAnchorX } from "./io";
 
@@ -11,6 +16,7 @@ type Props = {
   onSelect: (s: Selection) => void;
   patchPlatform: (i: number, patch: Partial<PlatformDef>) => void;
   patchEnemy: (i: number, patch: Partial<EnemyDef>) => void;
+  patchNpc: (i: number, patch: Partial<NpcDef>) => void;
   patchLevel: (patch: Partial<LevelDef>) => void;
 };
 
@@ -23,6 +29,7 @@ type Drag =
   | { kind: "enemy-move"; i: number; ox: number; ody: number }
   | { kind: "guard-min"; i: number; omin: number }
   | { kind: "guard-max"; i: number; omax: number }
+  | { kind: "npc-move"; i: number; ox: number; ody: number }
   | { kind: "spawn" }
   | { kind: "end" };
 
@@ -34,6 +41,7 @@ export default function Stage({
   onSelect,
   patchPlatform,
   patchEnemy,
+  patchNpc,
   patchLevel,
 }: Props) {
   const drag = useRef<{ d: Drag; startX: number; startY: number } | null>(null);
@@ -81,6 +89,12 @@ export default function Stage({
           }
           break;
         }
+        case "npc-move": {
+          const nx = Math.max(0, g(d.ox + dxWorld));
+          const ndy = Math.max(0, g(d.ody - dyWorld));
+          patchNpc(d.i, { x: nx, dy: ndy });
+          break;
+        }
         case "guard-min":
           patchEnemy(d.i, { patrolMinX: Math.max(0, g(d.omin + dxWorld)) });
           break;
@@ -106,7 +120,7 @@ export default function Stage({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [scale, grid, level, patchPlatform, patchEnemy, patchLevel]);
+  }, [scale, grid, level, patchPlatform, patchEnemy, patchNpc, patchLevel]);
 
   function startDrag(e: React.PointerEvent, d: Drag) {
     e.stopPropagation();
@@ -245,6 +259,42 @@ export default function Stage({
               >
                 {isGuard ? "G" : "K"}
               </div>
+            </div>
+          );
+        })}
+
+        {/* NPCs */}
+        {(level.npcs ?? []).map((n, i) => {
+          const sel = selection?.type === "npc" && selection.index === i;
+          const ndy = n.dy ?? 0;
+          const color =
+            n.role === "rescue"
+              ? "bg-sky-400/70"
+              : n.role === "talk"
+              ? "bg-emerald-300/70"
+              : "bg-neutral-300/60";
+          return (
+            <div
+              key={i}
+              onPointerDown={(ev) => {
+                onSelect({ type: "npc", index: i });
+                startDrag(ev, { kind: "npc-move", i, ox: n.x, ody: ndy });
+              }}
+              title={`${n.role} npc${n.label ? ` — ${n.label}` : ""}`}
+              className={`absolute flex -translate-x-1/2 cursor-move flex-col items-center justify-end rounded-sm border text-[10px] font-bold text-black ${
+                sel ? "border-yellow-400" : "border-white/60"
+              } ${color}`}
+              style={{
+                left: sx(n.x),
+                top: groundScreenY - sy(ndy) - sy(54),
+                width: sx(24),
+                height: sy(54),
+              }}
+            >
+              <span className="pointer-events-none -mt-4 whitespace-nowrap text-[9px] text-white/80">
+                {n.label || n.role}
+              </span>
+              <span className="mb-1">N</span>
             </div>
           );
         })}

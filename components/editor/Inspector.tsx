@@ -2,6 +2,8 @@ import type {
   LevelDef,
   PlatformDef,
   EnemyDef,
+  NpcDef,
+  NpcRole,
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
@@ -13,6 +15,7 @@ type Props = {
   patchLevel: (patch: Partial<LevelDef>) => void;
   patchPlatform: (i: number, patch: Partial<PlatformDef>) => void;
   patchEnemy: (i: number, patch: Partial<EnemyDef>) => void;
+  patchNpc: (i: number, patch: Partial<NpcDef>) => void;
   deleteSelected: () => void;
 };
 
@@ -22,6 +25,7 @@ export default function Inspector({
   patchLevel,
   patchPlatform,
   patchEnemy,
+  patchNpc,
   deleteSelected,
 }: Props) {
   return (
@@ -102,6 +106,17 @@ export default function Inspector({
               <GuardForm e={e} idx={selection.index} set={set} del={deleteSelected} />
             );
           })()}
+
+        {selection?.type === "npc" &&
+          (() => {
+            const n = (level.npcs ?? [])[selection.index];
+            if (!n) return null;
+            const set = (patch: Partial<NpcDef>) =>
+              patchNpc(selection.index, patch);
+            return (
+              <NpcForm n={n} idx={selection.index} set={set} del={deleteSelected} />
+            );
+          })()}
       </Section>
 
       <Section title="Opening narration">
@@ -175,6 +190,68 @@ function GuardForm({
       <NumRow label="visionCenterAngle" value={e.visionCenterAngle} step={0.01} onChange={(v) => set({ visionCenterAngle: v })} />
       <DeleteBtn onClick={del} />
     </>
+  );
+}
+
+function NpcForm({
+  n,
+  idx,
+  set,
+  del,
+}: {
+  n: NpcDef;
+  idx: number;
+  set: (patch: Partial<NpcDef>) => void;
+  del: () => void;
+}) {
+  return (
+    <>
+      <Head>NPC #{idx}</Head>
+      <RoleRow value={n.role} onChange={(v) => set({ role: v })} />
+      <TextRow
+        label="label"
+        value={n.label ?? ""}
+        onChange={(v) => set({ label: v })}
+      />
+      <FacingRow value={n.startFacing} onChange={(v) => set({ startFacing: v })} />
+      <NumRow label="x" value={n.x} onChange={(v) => set({ x: v })} />
+      <NumRow label="dy (height)" value={n.dy ?? 0} onChange={(v) => set({ dy: v })} />
+      {n.role !== "decor" && (
+        <div>
+          <p className="mb-1 mt-1 text-[10px] font-semibold uppercase tracking-wider text-yellow-500/70">
+            Dialogue
+          </p>
+          <Narration
+            lines={n.lines ?? []}
+            onChange={(lines) => set({ lines })}
+          />
+        </div>
+      )}
+      <DeleteBtn onClick={del} />
+    </>
+  );
+}
+
+function RoleRow({
+  value,
+  onChange,
+}: {
+  value: NpcRole;
+  onChange: (v: NpcRole) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span className="text-white/55">role</span>
+      <select
+        className="w-36 rounded border border-white/15 bg-black/30 px-1.5 py-1"
+        value={value}
+        onChange={(e) => onChange(e.target.value as NpcRole)}
+      >
+        <option value="decor">decor</option>
+        <option value="talk">talk</option>
+        <option value="rescue">rescue</option>
+      </select>
+    </label>
   );
 }
 

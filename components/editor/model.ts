@@ -3,6 +3,7 @@
 export type Selection =
   | { type: "platform"; index: number }
   | { type: "enemy"; index: number }
+  | { type: "npc"; index: number }
   | { type: "spawn" }
   | { type: "endTrigger" }
   | null;

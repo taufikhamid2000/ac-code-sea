@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import type {
   EnemyDef,
   LevelDef,
+  NpcDef,
   TemplarKnightDef,
 } from "@/lib/levels";
 import {
@@ -45,6 +46,11 @@ const P_BODY_H = 50;
 const P_HALF_H = P_BODY_H / 2;
 
 const GUARD_EYE_DY = 36;
+
+// How close the player must be (horizontally) to interact with an NPC.
+const NPC_INTERACT_RANGE = 64;
+const NPC_INTERACT_Y_TOLERANCE = 70;
+const NPC_LINES_MS = 6000;
 
 const RESPAWN_THRESHOLD = 50;
 const FADE_MS = 500;
@@ -95,6 +101,14 @@ export class LevelScene extends Phaser.Scene {
   private enemyStates: EnemyState[] = [];
   private enemyFx: Phaser.GameObjects.Graphics[] = [];
   private coneFx: Phaser.GameObjects.Graphics[] = [];
+
+  // NPCs (passive: set dressing, dialogue, rescue beats)
+  private npcRuntimes: Array<{ def: NpcDef; triggered: boolean }> = [];
+  private npcFx: Phaser.GameObjects.Graphics[] = [];
+  private npcLabels: Phaser.GameObjects.Text[] = [];
+  private npcPromptFx!: Phaser.GameObjects.Graphics;
+  private npcPromptText!: Phaser.GameObjects.Text;
+  private npcOverlay: Phaser.GameObjects.Container | null = null;
 
   // UI
   private promptFx!: Phaser.GameObjects.Graphics;
@@ -154,6 +168,7 @@ export class LevelScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.staticBodies);
 
     this.buildEnemies();
+    this.buildNpcs();
     this.buildOverlays();
     this.bindInput();
     this.bindCamera();
@@ -259,6 +274,33 @@ export class LevelScene extends Phaser.Scene {
       this.coneFx.push(this.add.graphics());
       this.enemyFx.push(this.add.graphics());
     }
+  }
+
+  private buildNpcs() {
+    const npcs = this.levelDef.npcs ?? [];
+    for (const def of npcs) {
+      this.npcRuntimes.push({ def, triggered: false });
+      this.npcFx.push(this.add.graphics());
+      const label = this.add
+        .text(0, 0, def.label ?? "", {
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+          fontSize: "10px",
+          color: "#e5e5e5",
+        })
+        .setOrigin(0.5, 1)
+        .setAlpha(0.75);
+      this.npcLabels.push(label);
+    }
+    this.npcPromptFx = this.add.graphics();
+    this.npcPromptText = this.add
+      .text(0, 0, "E", {
+        fontFamily: "ui-sans-serif, system-ui, sans-serif",
+        fontSize: "13px",
+        fontStyle: "bold",
+        color: "#7dd3fc",
+      })
+      .setOrigin(0.5, 0.5)
+      .setVisible(false);
   }
 
   private buildOverlays() {
@@ -676,6 +718,10 @@ export class LevelScene extends Phaser.Scene {
       this.dismissNarration();
       return;
     }
+    if (this.npcOverlay && this.npcOverlay.visible) {
+      this.dismissNpcLines();
+      return;
+    }
 
     const footY = this.player.y + P_HALF_H;
     const actor = { x: this.player.x };
@@ -727,6 +773,68 @@ export class LevelScene extends Phaser.Scene {
         return;
       }
     }
+
+    // 3. Talk to / rescue an NPC nearby.
+    const npcIdx = this.findInteractableNpc();
+    if (npcIdx !== -1) {
+      const rt = this.npcRuntimes[npcIdx];
+      if (rt.def.role === "rescue") rt.triggered = true;
+      const lines = rt.def.lines ?? [];
+      if (lines.length > 0) this.showNpcLines(lines);
+    }
+  }
+
+  /**
+   * Index of the nearest NPC the player can interact with (talk/rescue,
+   * in range, and — for rescue — not already rescued), or -1.
+   */
+  private findInteractableNpc(): number {
+    const px = this.player.x;
+    const pFootY = this.player.y + P_HALF_H;
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < this.npcRuntimes.length; i++) {
+      const rt = this.npcRuntimes[i];
+      if (rt.def.role === "decor") continue;
+      if (rt.def.role === "rescue" && rt.triggered) continue;
+      const ndy = rt.def.dy ?? 0;
+      const dx = Math.abs(px - rt.def.x);
+      const dy = Math.abs(pFootY - (this.groundY - ndy));
+      if (dx > NPC_INTERACT_RANGE || dy > NPC_INTERACT_Y_TOLERANCE) continue;
+      if (dx < bestDist) {
+        bestDist = dx;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  private showNpcLines(lines: string[]) {
+    this.npcOverlay?.destroy();
+    this.npcOverlay = this.buildNarrativeOverlay(lines, false);
+    this.npcOverlay.setVisible(true).setAlpha(0);
+    this.tweens.add({
+      targets: this.npcOverlay,
+      alpha: 1,
+      duration: 300,
+      ease: "Quad.out",
+    });
+    this.time.delayedCall(NPC_LINES_MS, () => this.dismissNpcLines());
+  }
+
+  private dismissNpcLines() {
+    const overlay = this.npcOverlay;
+    if (!overlay || !overlay.visible) return;
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0,
+      duration: 300,
+      ease: "Quad.in",
+      onComplete: () => {
+        overlay.destroy();
+        if (this.npcOverlay === overlay) this.npcOverlay = null;
+      },
+    });
   }
 
   private triggerKillEffect(x: number, y: number) {
@@ -876,6 +984,10 @@ export class LevelScene extends Phaser.Scene {
     for (let i = 0; i < this.enemyStates.length; i++) {
       Object.assign(this.enemyStates[i], spawnEnemy(this.levelDef.enemies[i]));
     }
+    for (const rt of this.npcRuntimes) rt.triggered = false;
+    this.npcOverlay?.destroy();
+    this.npcOverlay = null;
+
     this.detectionFrames = 0;
     this.hitSparks.length = 0;
     this.completeContainer.setVisible(false);
@@ -898,9 +1010,84 @@ export class LevelScene extends Phaser.Scene {
       this.redrawCone(i);
       this.redrawEnemy(i);
     }
+    this.redrawNpcs();
     this.drawHitSparks();
     this.redrawStealthPrompt();
+    this.redrawNpcPrompt();
     this.redrawDetectionOverlay();
+  }
+
+  private redrawNpcs() {
+    for (let i = 0; i < this.npcRuntimes.length; i++) {
+      const g = this.npcFx[i];
+      g.clear();
+      const rt = this.npcRuntimes[i];
+      const def = rt.def;
+      const ndy = def.dy ?? 0;
+      const baseY = this.groundY - ndy;
+      const rescued = def.role === "rescue" && rt.triggered;
+
+      // Neutral palette so NPCs read as non-threats. Rescue targets get a
+      // soft blue; a rescued one fades back.
+      const bodyColor =
+        def.role === "rescue" ? 0x9fcdf0 : def.role === "talk" ? 0xbcd9c0 : 0xcfcfcf;
+      const alpha = rescued ? 0.4 : 1;
+
+      g.save();
+      g.translateCanvas(def.x, baseY);
+      g.scaleCanvas(def.startFacing, 1);
+
+      // Legs
+      g.fillStyle(0x4a4a4a, alpha);
+      g.fillRect(-5, -12, 4, 12);
+      g.fillRect(1, -12, 4, 12);
+      // Body
+      g.fillStyle(bodyColor, alpha);
+      g.fillRect(-7, -28, 14, 16);
+      // Head
+      g.fillStyle(0xe8d2b0, alpha);
+      g.fillCircle(0, -34, 6);
+
+      g.restore();
+
+      // Label above the head, in screen-aligned text (no flip).
+      const label = this.npcLabels[i];
+      if (def.label) {
+        label.setText(def.label).setPosition(def.x, baseY - 44).setVisible(true);
+        label.setAlpha(rescued ? 0.4 : 0.75);
+      } else {
+        label.setVisible(false);
+      }
+    }
+  }
+
+  private redrawNpcPrompt() {
+    const g = this.npcPromptFx;
+    g.clear();
+    if (this.phase !== "playing") {
+      this.npcPromptText.setVisible(false);
+      return;
+    }
+    const idx = this.findInteractableNpc();
+    if (idx === -1) {
+      this.npcPromptText.setVisible(false);
+      return;
+    }
+    const def = this.npcRuntimes[idx].def;
+    const ndy = def.dy ?? 0;
+    const px = def.x;
+    const py = this.groundY - ndy - 56;
+    const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 220);
+
+    g.setAlpha(pulse);
+    g.fillStyle(0x000000, 0.78);
+    g.fillCircle(px, py, 11);
+    g.lineStyle(1.5, 0x7dd3fc, 0.95);
+    g.strokeCircle(px, py, 11);
+    this.npcPromptText
+      .setPosition(px, py + 1)
+      .setAlpha(pulse)
+      .setVisible(true);
   }
 
   private redrawPlayer() {
