@@ -47,12 +47,25 @@ const P_HALF_H = P_BODY_H / 2;
 
 const GUARD_EYE_DY = 36;
 
+// Melee only connects when attacker and target are at roughly the same
+// elevation — standing on a platform above a knight keeps you safe (and
+// stops you hitting it from above without dropping down).
+const MELEE_Y_TOLERANCE = 44;
+
 // How close the player must be (horizontally) to interact with an NPC.
 const NPC_INTERACT_RANGE = 64;
 const NPC_INTERACT_Y_TOLERANCE = 70;
 const NPC_LINES_MS = 6000;
 
-const RESPAWN_THRESHOLD = 50;
+// ===== Alert =====
+// Seeing the player fills the alert meter; losing sight drains it. At
+// full the guard force is "alerted" and stealth kills are disabled until
+// it drains back to calm (later: hiding in a bush drains it faster).
+const ALERT_MAX = 100;
+const ALERT_RISE = 2.4; // per frame while in a vision cone
+const ALERT_DECAY = 0.5; // per frame while unseen
+const ALERT_CLEAR = 4; // drop out of "alerted" once it drains to here
+
 const FADE_MS = 500;
 const MAX_PLAYER_HP = 3;
 const NARRATION_MS = 6000;
@@ -144,7 +157,12 @@ export class LevelScene extends Phaser.Scene {
 
   // Loop state
   private phase: Phase = "playing";
-  private detectionFrames = 0;
+  /** Alert meter, 0..ALERT_MAX. Rises while seen, drains while unseen. */
+  private alertLevel = 0;
+  /** Latches true at ALERT_MAX, clears when the meter drains to ALERT_CLEAR. */
+  private alerted = false;
+  /** True on frames the player is inside any guard's vision cone. */
+  private spottedNow = false;
   private keys!: Keys;
 
   constructor(level: LevelDef) {
@@ -657,16 +675,23 @@ export class LevelScene extends Phaser.Scene {
         break;
       }
     }
-    this.detectionFrames = anySpotted
-      ? Math.min(this.detectionFrames + 1, 999)
-      : Math.max(this.detectionFrames - 2, 0);
+    this.spottedNow = anySpotted;
+    this.alertLevel = anySpotted
+      ? Math.min(ALERT_MAX, this.alertLevel + ALERT_RISE)
+      : Math.max(0, this.alertLevel - ALERT_DECAY);
+    if (this.alertLevel >= ALERT_MAX) this.alerted = true;
+    else if (this.alertLevel <= ALERT_CLEAR) this.alerted = false;
 
-    // Combat: knight strikes hitting the player?
+    // Combat: knight strikes hitting the player? Only at the same
+    // elevation — a player standing on a platform above is out of reach.
     for (let i = 0; i < this.enemyStates.length; i++) {
       const s = this.enemyStates[i];
       const d = this.levelDef.enemies[i];
       if (s.kind === "templar-knight" && d.kind === "templar-knight") {
-        if (knightStrikeHits({ x: this.player.x }, s, d)) {
+        if (
+          this.isSameMeleeLevel(s.dy) &&
+          knightStrikeHits({ x: this.player.x }, s, d)
+        ) {
           this.applyPlayerDamage(d.damage);
         }
       }
@@ -689,13 +714,22 @@ export class LevelScene extends Phaser.Scene {
     }
 
     // Phase transitions
-    if (this.detectionFrames >= RESPAWN_THRESHOLD) {
-      this.startRespawn();
-    } else if (this.playerHp <= 0) {
+    if (this.playerHp <= 0) {
       this.startRespawn();
     } else if (this.player.x >= this.levelDef.endTriggerX) {
       this.startOutro();
     }
+  }
+
+  /**
+   * True when the player's feet are within melee range (vertically) of an
+   * entity standing at the given elevation (`dy` above ground). Used to
+   * stop melee connecting across a platform's height gap.
+   */
+  private isSameMeleeLevel(enemyDy: number): boolean {
+    const playerFootY = this.player.y + P_HALF_H;
+    const enemyFootY = this.groundY - enemyDy;
+    return Math.abs(playerFootY - enemyFootY) <= MELEE_Y_TOLERANCE;
   }
 
   private applyPlayerDamage(amount: number) {
@@ -726,23 +760,26 @@ export class LevelScene extends Phaser.Scene {
     const footY = this.player.y + P_HALF_H;
     const actor = { x: this.player.x };
 
-    // 1. Stealth kill on a patrol guard?
-    const stealthTarget = findStealthKillTarget(
-      { x: this.player.x, y: footY },
-      this.enemyStates,
-      this.groundY
-    );
-    if (stealthTarget) {
-      const enemy = this.enemyStates[stealthTarget.enemyIdx];
-      killEnemy(enemy);
-      if (stealthTarget.kind === "air") {
-        this.player.setPosition(enemy.x, this.groundY - enemy.dy - P_HALF_H);
-        this.player.body.setVelocity(0, 0);
+    // 1. Stealth kill on a patrol guard — disabled once the guards are
+    // alerted (they're watching for you now; you can't sneak a kill).
+    if (!this.alerted) {
+      const stealthTarget = findStealthKillTarget(
+        { x: this.player.x, y: footY },
+        this.enemyStates,
+        this.groundY
+      );
+      if (stealthTarget) {
+        const enemy = this.enemyStates[stealthTarget.enemyIdx];
+        killEnemy(enemy);
+        if (stealthTarget.kind === "air") {
+          this.player.setPosition(enemy.x, this.groundY - enemy.dy - P_HALF_H);
+          this.player.body.setVelocity(0, 0);
+        }
+        this.triggerAttackAnimation();
+        this.audio?.playStealthKill();
+        this.triggerKillEffect(enemy.x, this.groundY - enemy.dy - 28);
+        return;
       }
-      this.triggerAttackAnimation();
-      this.audio?.playStealthKill();
-      this.triggerKillEffect(enemy.x, this.groundY - enemy.dy - 28);
-      return;
     }
 
     // 2. Parry / strike against a templar-knight?
@@ -751,6 +788,8 @@ export class LevelScene extends Phaser.Scene {
       const d = this.levelDef.enemies[i];
       if (s.kind !== "templar-knight" || d.kind !== "templar-knight") continue;
       if (s.dead) continue;
+      // Can't reach a knight from a different elevation.
+      if (!this.isSameMeleeLevel(s.dy)) continue;
 
       // Parry beats strike if a telegraph is active and we're in range
       if (tryParry(actor, s, d)) {
@@ -988,7 +1027,9 @@ export class LevelScene extends Phaser.Scene {
     this.npcOverlay?.destroy();
     this.npcOverlay = null;
 
-    this.detectionFrames = 0;
+    this.alertLevel = 0;
+    this.alerted = false;
+    this.spottedNow = false;
     this.hitSparks.length = 0;
     this.completeContainer.setVisible(false);
     this.outroContainer.setVisible(false);
@@ -1014,7 +1055,7 @@ export class LevelScene extends Phaser.Scene {
     this.drawHitSparks();
     this.redrawStealthPrompt();
     this.redrawNpcPrompt();
-    this.redrawDetectionOverlay();
+    this.redrawAlertOverlay();
   }
 
   private redrawNpcs() {
@@ -1191,7 +1232,7 @@ export class LevelScene extends Phaser.Scene {
     if (state.dead) return;
     if (state.kind !== "templar-guard" || def.kind !== "templar-guard") return;
 
-    const alerted = this.detectionFrames > 0;
+    const alerted = this.spottedNow || this.alerted;
     const eyeX = state.x;
     const eyeY = this.groundY - state.dy - GUARD_EYE_DY;
 
@@ -1404,7 +1445,8 @@ export class LevelScene extends Phaser.Scene {
   private redrawStealthPrompt() {
     const g = this.promptFx;
     g.clear();
-    if (this.phase !== "playing") {
+    // No stealth prompt while alerted — assassination is off the table.
+    if (this.phase !== "playing" || this.alerted) {
       this.promptText.setVisible(false);
       return;
     }
@@ -1443,20 +1485,43 @@ export class LevelScene extends Phaser.Scene {
       .setVisible(true);
   }
 
-  private redrawDetectionOverlay() {
+  private redrawAlertOverlay() {
     const g = this.detectionFx;
     g.clear();
-    if (this.detectionFrames <= 0) {
+
+    const ratio = this.alertLevel / ALERT_MAX;
+    if (this.alertLevel <= 0 && !this.alerted) {
       this.detectionText.setVisible(false);
       return;
     }
+
     const w = this.scale.width;
     const h = this.scale.height;
-    const intensity = Math.min(1, this.detectionFrames / 20);
-    g.fillStyle(0xdc2626, 0.18 * intensity);
-    g.fillRect(0, 0, w, h);
+
+    // Red edge vignette while the meter is up or fully alerted.
+    const vignette = this.alerted ? 0.2 : 0.18 * ratio;
+    if (vignette > 0) {
+      g.fillStyle(0xdc2626, vignette);
+      g.fillRect(0, 0, w, h);
+    }
+
+    // Alert meter bar, centred near the top.
+    const barW = 120;
+    const barH = 5;
+    const bx = w / 2 - barW / 2;
+    const by = 40;
+    g.fillStyle(0x000000, 0.5);
+    g.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+    const meterColor = this.alerted ? 0xdc2626 : 0xeab308;
+    g.fillStyle(meterColor, 0.95);
+    g.fillRect(bx, by, barW * ratio, barH);
+
+    // State label.
+    const label = this.alerted ? "ALERTED" : ratio > 0.05 ? "SUSPICIOUS" : "";
     this.detectionText
-      .setAlpha(Math.min(1, intensity * 1.2))
-      .setVisible(this.detectionFrames > 6);
+      .setText(label)
+      .setColor(this.alerted ? "#ff5050" : "#eab308")
+      .setAlpha(this.alerted ? 1 : Math.min(1, ratio * 1.4))
+      .setVisible(label !== "");
   }
 }
