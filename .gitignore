@@ -37,3 +37,6 @@ next-env.d.ts
 # local data / claude
 *.db
 .claude/
+
+# Supabase CLI local state
+supabase/.temp/
