@@ -14,6 +14,7 @@ import { chapter01 } from "@/lib/levels";
 import { useUser, displayName } from "@/lib/auth/useUser";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { publishLevel, updateLevel, loadBySlug } from "@/lib/levels/cloud";
+import { uploadBackdrop } from "@/lib/storage";
 import type { Selection } from "./model";
 import Stage from "./Stage";
 import Inspector from "./Inspector";
@@ -233,6 +234,11 @@ export default function LevelEditor() {
     }
   }
 
+  async function handleUploadBackdrop(file: File): Promise<string> {
+    if (!user) throw new Error("Sign in to upload an image.");
+    return uploadBackdrop(file, user.id);
+  }
+
   async function doUpdate() {
     if (!publishedSlug) return;
     setPublishing(true);
@@ -356,6 +362,8 @@ export default function LevelEditor() {
               patchNpc={patchNpc}
               patchBush={patchBush}
               patchLadder={patchLadder}
+              canUpload={!!user}
+              uploadBackdrop={handleUploadBackdrop}
               deleteSelected={deleteSelected}
             />
           </div>

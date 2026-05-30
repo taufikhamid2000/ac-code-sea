@@ -9,6 +9,7 @@ import type {
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
+import { useRef, useState } from "react";
 import type { Selection } from "./model";
 
 type Props = {
@@ -20,6 +21,8 @@ type Props = {
   patchNpc: (i: number, patch: Partial<NpcDef>) => void;
   patchBush: (i: number, patch: Partial<BushDef>) => void;
   patchLadder: (i: number, patch: Partial<LadderDef>) => void;
+  canUpload: boolean;
+  uploadBackdrop: (file: File) => Promise<string>;
   deleteSelected: () => void;
 };
 
@@ -32,6 +35,8 @@ export default function Inspector({
   patchNpc,
   patchBush,
   patchLadder,
+  canUpload,
+  uploadBackdrop,
   deleteSelected,
 }: Props) {
   return (
@@ -56,6 +61,12 @@ export default function Inspector({
           label="backdrop"
           value={level.backdrop}
           onChange={(v) => patchLevel({ backdrop: v })}
+        />
+        <BackdropUpload
+          canUpload={canUpload}
+          backdrop={level.backdrop}
+          uploadBackdrop={uploadBackdrop}
+          onUploaded={(url) => patchLevel({ backdrop: url })}
         />
         <NumRow
           label="worldWidth"
@@ -345,6 +356,79 @@ function Narration({
 }
 
 // ===== small UI atoms =====
+
+function BackdropUpload({
+  canUpload,
+  backdrop,
+  uploadBackdrop,
+  onUploaded,
+}: {
+  canUpload: boolean;
+  backdrop: string;
+  uploadBackdrop: (file: File) => Promise<string>;
+  onUploaded: (url: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setBusy(true);
+    setMsg("Uploading…");
+    try {
+      const url = await uploadBackdrop(file);
+      onUploaded(url);
+      setMsg("Uploaded.");
+    } catch (err) {
+      setMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={!canUpload || busy}
+          className="rounded border border-white/15 px-2 py-1 text-white/80 hover:bg-white/10 disabled:opacity-40"
+        >
+          {busy ? "Uploading…" : "Upload image"}
+        </button>
+        {!canUpload && (
+          <span className="text-white/40">sign in to upload</span>
+        )}
+        {msg && (
+          <span
+            className={
+              /upload(ed|ing)/i.test(msg) ? "text-emerald-400" : "text-red-400"
+            }
+          >
+            {msg}
+          </span>
+        )}
+      </div>
+      {backdrop && (
+        <div
+          className="h-16 w-full rounded border border-white/10 bg-cover bg-center"
+          style={{ backgroundImage: `url(${backdrop})` }}
+          aria-label="backdrop preview"
+        />
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        onChange={onPick}
+        className="hidden"
+      />
+    </div>
+  );
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
