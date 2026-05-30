@@ -1,10 +1,12 @@
 import Head from "next/head";
 import Link from "next/link";
 import { chapter01 } from "@/lib/levels";
+import { useUser, displayName } from "@/lib/auth/useUser";
 
 const BACKDROP = chapter01.backdrop;
 
 export default function Menu() {
+  const { user, loading } = useUser();
   return (
     <>
       <Head>
@@ -76,7 +78,11 @@ export default function Menu() {
               href="/account"
               className="mt-1 text-[11px] uppercase tracking-[4px] text-white/45 transition hover:text-white/80"
             >
-              Sign in / Account
+              {loading
+                ? " "
+                : user
+                ? `${displayName(user)} · Account`
+                : "Sign in"}
             </Link>
           </div>
         </div>
