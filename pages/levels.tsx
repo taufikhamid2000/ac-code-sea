@@ -1,28 +1,20 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-type LevelSummary = {
-  slug: string;
-  title: string;
-  chapter: string;
-  author: string;
-  plays: number;
-  created_at: string;
-};
+import { listPublished, type LevelSummary } from "@/lib/levels/cloud";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 
 export default function CommunityLevels() {
   const [levels, setLevels] = useState<LevelSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/levels")
-      .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error ?? "Failed to load levels.");
-        return json;
-      })
-      .then((json) => setLevels(json.levels))
+    if (!isSupabaseConfigured()) {
+      setError("Level sharing isn't configured.");
+      return;
+    }
+    listPublished()
+      .then(setLevels)
       .catch((e) => setError(e.message));
   }, []);
 

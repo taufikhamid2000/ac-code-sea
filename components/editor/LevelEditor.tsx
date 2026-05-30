@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/router";
 import type {
   LevelDef,
   PlatformDef,
@@ -9,6 +11,9 @@ import type {
   LadderDef,
 } from "@/lib/levels/types";
 import { chapter01 } from "@/lib/levels";
+import { useUser, displayName } from "@/lib/auth/useUser";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { publishLevel, updateLevel, loadBySlug } from "@/lib/levels/cloud";
 import type { Selection } from "./model";
 import Stage from "./Stage";
 import Inspector from "./Inspector";
@@ -53,15 +58,25 @@ export default function LevelEditor() {
   const [copied, setCopied] = useState(false);
 
   // Publishing (community sharing).
-  const [author, setAuthor] = useState("");
+  const { user } = useUser();
+  const router = useRouter();
   const [publishMsg, setPublishMsg] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
-  const [editToken, setEditToken] = useState<string | null>(null);
 
+  // Load an existing cloud level for editing via /editor?load=<slug>.
   useEffect(() => {
-    setAuthor(window.localStorage.getItem("ac-author") ?? "");
-  }, []);
+    if (!router.isReady) return;
+    const slug = router.query.load;
+    if (typeof slug !== "string" || !slug) return;
+    loadBySlug(slug)
+      .then((row) => {
+        setLevel(row.data);
+        setPublishedSlug(slug);
+        setPublishMsg("Loaded for editing.");
+      })
+      .catch((e) => setPublishMsg((e as Error).message));
+  }, [router.isReady, router.query.load]);
 
   // Autosave.
   useEffect(() => {
@@ -203,65 +218,30 @@ export default function LevelEditor() {
     }
   }
 
-  async function publishLevel() {
+  async function doPublish() {
+    if (!user) return;
     setPublishing(true);
     setPublishMsg("Publishing…");
-    window.localStorage.setItem("ac-author", author);
     try {
-      const res = await fetch("/api/levels", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: level.title,
-          chapter: level.chapter,
-          author: author || "anonymous",
-          data: level,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setPublishMsg(json.error ?? "Publish failed.");
-        return;
-      }
-      setPublishedSlug(json.slug);
-      setEditToken(json.editToken);
-      // Remember the token so the same browser can update this level later.
-      try {
-        const map = JSON.parse(
-          window.localStorage.getItem("ac-edit-tokens") ?? "{}"
-        );
-        map[json.slug] = json.editToken;
-        window.localStorage.setItem("ac-edit-tokens", JSON.stringify(map));
-      } catch {
-        /* ignore */
-      }
+      const slug = await publishLevel(level, user);
+      setPublishedSlug(slug);
       setPublishMsg("Published!");
-    } catch {
-      setPublishMsg("Network error.");
+    } catch (e) {
+      setPublishMsg((e as Error).message);
     } finally {
       setPublishing(false);
     }
   }
 
-  async function updateLevel() {
-    if (!publishedSlug || !editToken) return;
+  async function doUpdate() {
+    if (!publishedSlug) return;
     setPublishing(true);
     setPublishMsg("Updating…");
     try {
-      const res = await fetch(`/api/levels/${publishedSlug}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          editToken,
-          title: level.title,
-          chapter: level.chapter,
-          data: level,
-        }),
-      });
-      const json = await res.json();
-      setPublishMsg(res.ok ? "Updated!" : json.error ?? "Update failed.");
-    } catch {
-      setPublishMsg("Network error.");
+      await updateLevel(publishedSlug, level);
+      setPublishMsg("Updated!");
+    } catch (e) {
+      setPublishMsg((e as Error).message);
     } finally {
       setPublishing(false);
     }
@@ -385,43 +365,52 @@ export default function LevelEditor() {
             <div className="mb-1.5 font-semibold uppercase tracking-wider text-yellow-500/70">
               Publish
             </div>
-            <input
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Your name (author)"
-              className="mb-2 w-full rounded border border-white/15 bg-black/30 px-2 py-1"
-            />
-            <div className="flex items-center gap-2">
-              <Btn onClick={publishLevel} accent>
-                {publishing ? "…" : "Publish to community"}
-              </Btn>
-              {publishedSlug && editToken && (
-                <Btn onClick={updateLevel}>Update</Btn>
-              )}
-            </div>
-            {publishMsg && (
-              <p
-                className={`mt-1.5 ${
-                  /fail|error|not configured/i.test(publishMsg)
-                    ? "text-red-400"
-                    : "text-emerald-400"
-                }`}
-              >
-                {publishMsg}
+            {!isSupabaseConfigured() ? (
+              <p className="text-white/40">Sharing isn&apos;t configured.</p>
+            ) : !user ? (
+              <p className="text-white/55">
+                <Link href="/account" className="text-sky-400 underline">
+                  Sign in
+                </Link>{" "}
+                to publish your level.
               </p>
-            )}
-            {publishedSlug && (
-              <p className="mt-1 break-all text-white/50">
-                Share:{" "}
-                <a
-                  className="text-sky-400 underline"
-                  href={`/play?level=${publishedSlug}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  /play?level={publishedSlug}
-                </a>
-              </p>
+            ) : (
+              <>
+                <p className="mb-2 text-white/45">
+                  Publishing as{" "}
+                  <span className="text-white/75">{displayName(user)}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <Btn onClick={doPublish} accent>
+                    {publishing ? "…" : publishedSlug ? "Publish copy" : "Publish"}
+                  </Btn>
+                  {publishedSlug && <Btn onClick={doUpdate}>Update</Btn>}
+                </div>
+                {publishMsg && (
+                  <p
+                    className={`mt-1.5 ${
+                      /fail|error|not |denied|violat/i.test(publishMsg)
+                        ? "text-red-400"
+                        : "text-emerald-400"
+                    }`}
+                  >
+                    {publishMsg}
+                  </p>
+                )}
+                {publishedSlug && (
+                  <p className="mt-1 break-all text-white/50">
+                    Share:{" "}
+                    <a
+                      className="text-sky-400 underline"
+                      href={`/play?level=${publishedSlug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      /play?level={publishedSlug}
+                    </a>
+                  </p>
+                )}
+              </>
             )}
           </div>
 

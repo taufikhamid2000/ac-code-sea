@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { chapter01 } from "@/lib/levels";
 import type { LevelDef } from "@/lib/levels/types";
+import { loadBySlug } from "@/lib/levels/cloud";
 
 // Canvas + window access — client-only.
 const Platformer = dynamic(() => import("@/components/game/Platformer"), {
@@ -27,14 +28,9 @@ export default function Play() {
     }
     setLoading(true);
     setLoadError(null);
-    fetch(`/api/levels/${slug}?play=1`)
-      .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error ?? "Failed to load level.");
-        return json;
-      })
-      .then((json) => setLevel(json.level.data as LevelDef))
-      .catch((e) => setLoadError(e.message))
+    loadBySlug(slug)
+      .then((row) => setLevel(row.data))
+      .catch((e) => setLoadError((e as Error).message))
       .finally(() => setLoading(false));
   }, [router.isReady, router.query.level]);
 

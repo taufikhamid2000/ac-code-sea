@@ -72,6 +72,12 @@ export default function Menu() {
             >
               Level Editor
             </Link>
+            <Link
+              href="/account"
+              className="mt-1 text-[11px] uppercase tracking-[4px] text-white/45 transition hover:text-white/80"
+            >
+              Sign in / Account
+            </Link>
           </div>
         </div>
 
