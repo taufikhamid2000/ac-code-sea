@@ -72,6 +72,11 @@ export default function Inspector({
           value={level.playerSpawn.x}
           onChange={(v) => patchLevel({ playerSpawn: { x: v } })}
         />
+        <NumRow
+          label="undergroundDepth"
+          value={level.undergroundDepth ?? 0}
+          onChange={(v) => patchLevel({ undergroundDepth: Math.max(0, v) })}
+        />
       </Section>
 
       <Section title="Selection">

@@ -195,7 +195,12 @@ export class LevelScene extends Phaser.Scene {
     this.groundY = h * GROUND_RATIO;
 
     this.physics.world.gravity.y = GRAVITY_Y;
-    this.physics.world.setBounds(0, 0, this.levelDef.worldWidth, h);
+    this.physics.world.setBounds(
+      0,
+      0,
+      this.levelDef.worldWidth,
+      this.worldHeight(h)
+    );
 
     this.staticBodies = this.physics.add.staticGroup();
 
@@ -244,6 +249,12 @@ export class LevelScene extends Phaser.Scene {
 
   // ===== Build =====
 
+  /** Total world/camera height, extended below ground for underground areas. */
+  private worldHeight(viewportH: number): number {
+    const depth = this.levelDef.undergroundDepth ?? 0;
+    return Math.max(viewportH, this.groundY + depth + 80);
+  }
+
   private buildGround() {
     const w = this.levelDef.worldWidth;
     this.add.rectangle(w / 2, this.groundY, w, 1, 0xeab308, 0.35);
@@ -254,16 +265,29 @@ export class LevelScene extends Phaser.Scene {
       ticks.fillRect(x, this.groundY + 2, 1, 4);
     }
 
+    // Thin solid floor so a climbing player (platform collision is off
+    // while climbing) can pass straight through a ladder into the
+    // underground below. Thin enough to never tunnel a falling body.
+    const FLOOR_THICKNESS = 40;
     const floor = this.add.rectangle(
       w / 2,
-      this.groundY + 100,
+      this.groundY + FLOOR_THICKNESS / 2,
       w,
-      200,
+      FLOOR_THICKNESS,
       0x000000,
       0
     );
     this.physics.add.existing(floor, true);
     this.staticBodies.add(floor);
+
+    // Visual shading for the underground area, so the lair reads as a
+    // distinct space rather than empty backdrop.
+    const depth = this.levelDef.undergroundDepth ?? 0;
+    if (depth > 0) {
+      this.add
+        .rectangle(w / 2, this.groundY + depth / 2, w, depth, 0x07090c, 0.82)
+        .setDepth(-5);
+    }
   }
 
   private buildPlatforms() {
@@ -384,9 +408,17 @@ export class LevelScene extends Phaser.Scene {
   private activeLadder() {
     const px = this.player.x;
     const py = this.player.y;
+    // Generous top margin (~half the body) so a player standing on the
+    // ground above a down-ladder can grab it and climb into the lair.
+    const topMargin = P_HALF_H + 10;
     for (const l of this.levelDef.ladders ?? []) {
       const r = this.ladderRect(l);
-      if (px >= r.left && px <= r.right && py >= r.top - 12 && py <= r.bottom + 8) {
+      if (
+        px >= r.left &&
+        px <= r.right &&
+        py >= r.top - topMargin &&
+        py <= r.bottom + 8
+      ) {
         return r;
       }
     }
@@ -693,15 +725,21 @@ export class LevelScene extends Phaser.Scene {
 
   private bindCamera() {
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, this.levelDef.worldWidth, this.scale.height);
+    cam.setBounds(
+      0,
+      0,
+      this.levelDef.worldWidth,
+      this.worldHeight(this.scale.height)
+    );
     cam.startFollow(this.player, true, CAMERA_LERP, CAMERA_LERP);
   }
 
   private handleResize(gameSize: Phaser.Structs.Size) {
     const w = gameSize.width;
     const h = gameSize.height;
-    this.physics.world.setBounds(0, 0, this.levelDef.worldWidth, h);
-    this.cameras.main.setBounds(0, 0, this.levelDef.worldWidth, h);
+    const wh = this.worldHeight(h);
+    this.physics.world.setBounds(0, 0, this.levelDef.worldWidth, wh);
+    this.cameras.main.setBounds(0, 0, this.levelDef.worldWidth, wh);
     this.detectionText.setPosition(w / 2, 56);
     this.hpText.setPosition(w - 16, 16);
     this.flashOverlay.setSize(w, h);

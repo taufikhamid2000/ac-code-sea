@@ -124,7 +124,8 @@ export default function Stage({
           break;
         case "ladder-move": {
           const nx = Math.max(0, g(d.ox + dxWorld));
-          const ndy = Math.max(0, g(d.ody - dyWorld));
+          // Allow negative dy so a ladder's base can sit underground.
+          const ndy = g(d.ody - dyWorld);
           patchLadder(d.i, { x: nx, dy: ndy });
           break;
         }
@@ -176,8 +177,10 @@ export default function Stage({
     drag.current = { d, startX: e.clientX, startY: e.clientY };
   }
 
+  const underground = level.undergroundDepth ?? 0;
+  const worldH = Math.max(STAGE_WORLD_HEIGHT, GROUND_Y + underground + 60);
   const contentWidth = sx(level.worldWidth);
-  const contentHeight = sy(STAGE_WORLD_HEIGHT);
+  const contentHeight = sy(worldH);
   const groundScreenY = sy(GROUND_Y);
 
   return (
@@ -196,11 +199,25 @@ export default function Stage({
           className="absolute inset-x-0 bg-neutral-800"
           style={{ top: groundScreenY, bottom: 0 }}
         />
+        {/* Underground area shading */}
+        {underground > 0 && (
+          <div
+            className="absolute inset-x-0 bg-neutral-950"
+            style={{ top: groundScreenY, height: sy(underground) }}
+          />
+        )}
         {/* Ground line */}
         <div
           className="absolute inset-x-0 h-px bg-yellow-500/50"
           style={{ top: groundScreenY }}
         />
+        {/* Underground floor line */}
+        {underground > 0 && (
+          <div
+            className="absolute inset-x-0 h-px bg-yellow-500/20"
+            style={{ top: groundScreenY + sy(underground) }}
+          />
+        )}
 
         {/* Vision cones (SVG overlay) */}
         <svg

@@ -188,4 +188,11 @@ export type LevelDef = {
   bushes?: BushDef[];
   /** Climbable ladders for vertical movement. */
   ladders?: LadderDef[];
+  /**
+   * Pixels of world below the ground line. > 0 opens an underground area
+   * (e.g. the Brotherhood lair) the camera can scroll down into. Reach it
+   * by climbing a ladder down through the ground; place underground floors
+   * as platforms with negative `dy`.
+   */
+  undergroundDepth?: number;
 };
