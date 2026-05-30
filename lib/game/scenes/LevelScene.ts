@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import type {
+  BushDef,
   EnemyDef,
   LevelDef,
   NpcDef,
@@ -64,7 +65,11 @@ const NPC_LINES_MS = 6000;
 const ALERT_MAX = 100;
 const ALERT_RISE = 2.4; // per frame while in a vision cone
 const ALERT_DECAY = 0.5; // per frame while unseen
+const ALERT_HIDE_DECAY = 2.4; // per frame while hidden in a bush
 const ALERT_CLEAR = 4; // drop out of "alerted" once it drains to here
+
+// Default bush height when a BushDef omits `h`.
+const BUSH_DEFAULT_H = 72;
 
 const FADE_MS = 500;
 const MAX_PLAYER_HP = 3;
@@ -114,6 +119,10 @@ export class LevelScene extends Phaser.Scene {
   private enemyStates: EnemyState[] = [];
   private enemyFx: Phaser.GameObjects.Graphics[] = [];
   private coneFx: Phaser.GameObjects.Graphics[] = [];
+
+  // Bushes (hiding spots)
+  private bushFx!: Phaser.GameObjects.Graphics;
+  private playerHidden = false;
 
   // NPCs (passive: set dressing, dialogue, rescue beats)
   private npcRuntimes: Array<{ def: NpcDef; triggered: boolean }> = [];
@@ -186,6 +195,7 @@ export class LevelScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.staticBodies);
 
     this.buildEnemies();
+    this.buildBushes();
     this.buildNpcs();
     this.buildOverlays();
     this.bindInput();
@@ -291,6 +301,54 @@ export class LevelScene extends Phaser.Scene {
     for (let i = 0; i < this.enemyStates.length; i++) {
       this.coneFx.push(this.add.graphics());
       this.enemyFx.push(this.add.graphics());
+    }
+  }
+
+  private buildBushes() {
+    // Single world-space graphics layer drawn ABOVE the player (depth 60)
+    // so the player visually disappears into the foliage when hidden.
+    this.bushFx = this.add.graphics().setDepth(60);
+  }
+
+  /** World-space rect (left, top, right, bottom) for a bush. */
+  private bushRect(b: BushDef) {
+    const h = b.h ?? BUSH_DEFAULT_H;
+    const dy = b.dy ?? 0;
+    const bottom = this.groundY - dy;
+    return { left: b.x, right: b.x + b.w, top: bottom - h, bottom };
+  }
+
+  /** True if the player's center is inside any bush. */
+  private computePlayerHidden(): boolean {
+    const px = this.player.x;
+    const py = this.player.y;
+    for (const b of this.levelDef.bushes ?? []) {
+      const r = this.bushRect(b);
+      if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private redrawBushes() {
+    const g = this.bushFx;
+    g.clear();
+    for (const b of this.levelDef.bushes ?? []) {
+      const r = this.bushRect(b);
+      const w = r.right - r.left;
+      const h = r.bottom - r.top;
+      // Denser/brighter while the player is hiding inside this bush.
+      const inThis =
+        this.playerHidden &&
+        this.player.x >= r.left &&
+        this.player.x <= r.right;
+      const baseAlpha = inThis ? 0.95 : 0.8;
+      g.fillStyle(0x14401f, baseAlpha);
+      g.fillRect(r.left, r.top, w, h);
+      // A lighter canopy band on top for a bit of shape.
+      g.fillStyle(0x1f5c2c, baseAlpha);
+      g.fillRect(r.left, r.top, w, Math.min(14, h));
     }
   }
 
@@ -658,27 +716,33 @@ export class LevelScene extends Phaser.Scene {
       tickEnemy(this.enemyStates[i], this.levelDef.enemies[i]);
     }
 
+    // Hiding in a bush blocks vision entirely and drains alert faster.
+    this.playerHidden = this.computePlayerHidden();
+
     // Detection (stealth enemies only — combat enemies skip)
     const playerFootY = this.player.y + P_HALF_H;
     const sight = { x: this.player.x, y: playerFootY };
     let anySpotted = false;
-    for (let i = 0; i < this.enemyStates.length; i++) {
-      if (
-        isInVisionCone(
-          this.enemyStates[i],
-          this.levelDef.enemies[i],
-          sight,
-          this.groundY
-        )
-      ) {
-        anySpotted = true;
-        break;
+    if (!this.playerHidden) {
+      for (let i = 0; i < this.enemyStates.length; i++) {
+        if (
+          isInVisionCone(
+            this.enemyStates[i],
+            this.levelDef.enemies[i],
+            sight,
+            this.groundY
+          )
+        ) {
+          anySpotted = true;
+          break;
+        }
       }
     }
     this.spottedNow = anySpotted;
+    const decay = this.playerHidden ? ALERT_HIDE_DECAY : ALERT_DECAY;
     this.alertLevel = anySpotted
       ? Math.min(ALERT_MAX, this.alertLevel + ALERT_RISE)
-      : Math.max(0, this.alertLevel - ALERT_DECAY);
+      : Math.max(0, this.alertLevel - decay);
     if (this.alertLevel >= ALERT_MAX) this.alerted = true;
     else if (this.alertLevel <= ALERT_CLEAR) this.alerted = false;
 
@@ -1030,6 +1094,7 @@ export class LevelScene extends Phaser.Scene {
     this.alertLevel = 0;
     this.alerted = false;
     this.spottedNow = false;
+    this.playerHidden = false;
     this.hitSparks.length = 0;
     this.completeContainer.setVisible(false);
     this.outroContainer.setVisible(false);
@@ -1052,6 +1117,7 @@ export class LevelScene extends Phaser.Scene {
       this.redrawEnemy(i);
     }
     this.redrawNpcs();
+    this.redrawBushes();
     this.drawHitSparks();
     this.redrawStealthPrompt();
     this.redrawNpcPrompt();
@@ -1491,7 +1557,16 @@ export class LevelScene extends Phaser.Scene {
 
     const ratio = this.alertLevel / ALERT_MAX;
     if (this.alertLevel <= 0 && !this.alerted) {
-      this.detectionText.setVisible(false);
+      // Calm — but still show a HIDDEN cue when tucked in a bush.
+      if (this.playerHidden) {
+        this.detectionText
+          .setText("HIDDEN")
+          .setColor("#86efac")
+          .setAlpha(0.9)
+          .setVisible(true);
+      } else {
+        this.detectionText.setVisible(false);
+      }
       return;
     }
 

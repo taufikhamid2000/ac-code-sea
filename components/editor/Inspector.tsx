@@ -4,6 +4,7 @@ import type {
   EnemyDef,
   NpcDef,
   NpcRole,
+  BushDef,
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
@@ -16,6 +17,7 @@ type Props = {
   patchPlatform: (i: number, patch: Partial<PlatformDef>) => void;
   patchEnemy: (i: number, patch: Partial<EnemyDef>) => void;
   patchNpc: (i: number, patch: Partial<NpcDef>) => void;
+  patchBush: (i: number, patch: Partial<BushDef>) => void;
   deleteSelected: () => void;
 };
 
@@ -26,6 +28,7 @@ export default function Inspector({
   patchPlatform,
   patchEnemy,
   patchNpc,
+  patchBush,
   deleteSelected,
 }: Props) {
   return (
@@ -115,6 +118,27 @@ export default function Inspector({
               patchNpc(selection.index, patch);
             return (
               <NpcForm n={n} idx={selection.index} set={set} del={deleteSelected} />
+            );
+          })()}
+
+        {selection?.type === "bush" &&
+          (() => {
+            const b = (level.bushes ?? [])[selection.index];
+            if (!b) return null;
+            const set = (patch: Partial<BushDef>) =>
+              patchBush(selection.index, patch);
+            return (
+              <>
+                <Head>Bush #{selection.index}</Head>
+                <p className="text-white/40">
+                  Hiding spot — blocks vision &amp; drains alert.
+                </p>
+                <NumRow label="x" value={b.x} onChange={(v) => set({ x: v })} />
+                <NumRow label="dy (base)" value={b.dy ?? 0} onChange={(v) => set({ dy: v })} />
+                <NumRow label="w" value={b.w} onChange={(v) => set({ w: v })} />
+                <NumRow label="h" value={b.h ?? 72} onChange={(v) => set({ h: v })} />
+                <DeleteBtn onClick={deleteSelected} />
+              </>
             );
           })()}
       </Section>

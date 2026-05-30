@@ -4,6 +4,7 @@ import type {
   EnemyDef,
   PlatformDef,
   NpcDef,
+  BushDef,
 } from "@/lib/levels/types";
 import { GROUND_Y, STAGE_WORLD_HEIGHT, snap, type Selection } from "./model";
 import { enemyAnchorX } from "./io";
@@ -17,8 +18,11 @@ type Props = {
   patchPlatform: (i: number, patch: Partial<PlatformDef>) => void;
   patchEnemy: (i: number, patch: Partial<EnemyDef>) => void;
   patchNpc: (i: number, patch: Partial<NpcDef>) => void;
+  patchBush: (i: number, patch: Partial<BushDef>) => void;
   patchLevel: (patch: Partial<LevelDef>) => void;
 };
+
+const BUSH_DEFAULT_H = 72;
 
 const GUARD_EYE_DY = 46;
 
@@ -30,6 +34,9 @@ type Drag =
   | { kind: "guard-min"; i: number; omin: number }
   | { kind: "guard-max"; i: number; omax: number }
   | { kind: "npc-move"; i: number; ox: number; ody: number }
+  | { kind: "bush-move"; i: number; ox: number; ody: number }
+  | { kind: "bush-w"; i: number; ow: number }
+  | { kind: "bush-h"; i: number; oh: number }
   | { kind: "spawn" }
   | { kind: "end" };
 
@@ -42,6 +49,7 @@ export default function Stage({
   patchPlatform,
   patchEnemy,
   patchNpc,
+  patchBush,
   patchLevel,
 }: Props) {
   const drag = useRef<{ d: Drag; startX: number; startY: number } | null>(null);
@@ -95,6 +103,19 @@ export default function Stage({
           patchNpc(d.i, { x: nx, dy: ndy });
           break;
         }
+        case "bush-move": {
+          const nx = Math.max(0, g(d.ox + dxWorld));
+          const ndy = Math.max(0, g(d.ody - dyWorld));
+          patchBush(d.i, { x: nx, dy: ndy });
+          break;
+        }
+        case "bush-w":
+          patchBush(d.i, { w: Math.max(24, g(d.ow + dxWorld)) });
+          break;
+        case "bush-h":
+          // Top handle: dragging up (negative dyWorld) grows the bush.
+          patchBush(d.i, { h: Math.max(24, g(d.oh - dyWorld)) });
+          break;
         case "guard-min":
           patchEnemy(d.i, { patrolMinX: Math.max(0, g(d.omin + dxWorld)) });
           break;
@@ -120,7 +141,16 @@ export default function Stage({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [scale, grid, level, patchPlatform, patchEnemy, patchNpc, patchLevel]);
+  }, [
+    scale,
+    grid,
+    level,
+    patchPlatform,
+    patchEnemy,
+    patchNpc,
+    patchBush,
+    patchLevel,
+  ]);
 
   function startDrag(e: React.PointerEvent, d: Drag) {
     e.stopPropagation();
@@ -172,6 +202,51 @@ export default function Stage({
             ) : null
           )}
         </svg>
+
+        {/* Bushes (hiding spots) */}
+        {(level.bushes ?? []).map((b, i) => {
+          const sel = selection?.type === "bush" && selection.index === i;
+          const bdy = b.dy ?? 0;
+          const bh = b.h ?? BUSH_DEFAULT_H;
+          return (
+            <div
+              key={i}
+              onPointerDown={(e) => {
+                onSelect({ type: "bush", index: i });
+                startDrag(e, { kind: "bush-move", i, ox: b.x, ody: bdy });
+              }}
+              title="bush (hiding spot)"
+              className={`absolute cursor-move rounded-t-lg border ${
+                sel
+                  ? "border-yellow-400 bg-green-500/40"
+                  : "border-green-600/60 bg-green-700/35"
+              }`}
+              style={{
+                left: sx(b.x),
+                top: groundScreenY - sy(bdy) - sy(bh),
+                width: sx(b.w),
+                height: sy(bh),
+              }}
+            >
+              {sel && (
+                <>
+                  <Handle
+                    pos="right"
+                    onPointerDown={(e) =>
+                      startDrag(e, { kind: "bush-w", i, ow: b.w })
+                    }
+                  />
+                  <Handle
+                    pos="top"
+                    onPointerDown={(e) =>
+                      startDrag(e, { kind: "bush-h", i, oh: bh })
+                    }
+                  />
+                </>
+              )}
+            </div>
+          );
+        })}
 
         {/* Platforms */}
         {level.platforms.map((p, i) => {
@@ -332,12 +407,14 @@ function Handle({
   pos,
   onPointerDown,
 }: {
-  pos: "right" | "bottom";
+  pos: "right" | "bottom" | "top";
   onPointerDown: (e: React.PointerEvent) => void;
 }) {
   const cls =
     pos === "right"
       ? "right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize"
+      : pos === "top"
+      ? "top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize"
       : "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize";
   return (
     <div

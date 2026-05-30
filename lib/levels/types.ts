@@ -17,6 +17,24 @@ export type PlatformDef = {
   h: number;
 };
 
+// ===== Bushes =====
+
+/**
+ * A hiding spot. While the player's body overlaps a bush, guards can't
+ * see them and the alert meter drains faster — the way to slip from
+ * ALERTED back to calm and resume assassinating.
+ */
+export type BushDef = {
+  /** World-space x of the bush's left edge */
+  x: number;
+  /** Pixels above the ground line the bush's base sits at (0 = ground) */
+  dy?: number;
+  /** Width in pixels */
+  w: number;
+  /** Height in pixels (defaults to a sensible bush height if omitted) */
+  h?: number;
+};
+
 // ===== Enemies =====
 
 type EnemyDefBase = {
@@ -148,4 +166,6 @@ export type LevelDef = {
   enemies: EnemyDef[];
   /** Non-combat characters (set dressing, dialogue, rescue beats). */
   npcs?: NpcDef[];
+  /** Hiding spots that block vision and drain the alert meter faster. */
+  bushes?: BushDef[];
 };

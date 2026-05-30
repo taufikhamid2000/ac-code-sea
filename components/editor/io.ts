@@ -3,6 +3,7 @@ import type {
   PlatformDef,
   EnemyDef,
   NpcDef,
+  BushDef,
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
@@ -32,6 +33,10 @@ export function emptyLevel(): LevelDef {
 
 export function defaultPlatform(x: number): PlatformDef {
   return { x: Math.round(x), dy: 120, w: 160, h: 24 };
+}
+
+export function defaultBush(x: number): BushDef {
+  return { x: Math.round(x), dy: 0, w: 130, h: 72 };
 }
 
 export function defaultKnight(x: number): TemplarKnightDef {
@@ -190,6 +195,14 @@ function validateLevel(v: unknown): string | null {
       if (o?.kind !== "npc") return `Unknown npc kind: ${String(o?.kind)}.`;
       if (o.role !== "decor" && o.role !== "talk" && o.role !== "rescue")
         return `Unknown npc role: ${String(o.role)}.`;
+    }
+  }
+  if (l.bushes !== undefined) {
+    if (!Array.isArray(l.bushes)) return '"bushes" must be an array.';
+    for (const b of l.bushes as unknown[]) {
+      const o = b as Record<string, unknown>;
+      if (typeof o?.x !== "number" || typeof o?.w !== "number")
+        return "Each bush needs numeric x and w.";
     }
   }
   return null;
