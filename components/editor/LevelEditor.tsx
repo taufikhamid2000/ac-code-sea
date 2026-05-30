@@ -52,6 +52,17 @@ export default function LevelEditor() {
   const [importMsg, setImportMsg] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Publishing (community sharing).
+  const [author, setAuthor] = useState("");
+  const [publishMsg, setPublishMsg] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
+  const [editToken, setEditToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAuthor(window.localStorage.getItem("ac-author") ?? "");
+  }, []);
+
   // Autosave.
   useEffect(() => {
     const id = setTimeout(() => {
@@ -192,6 +203,70 @@ export default function LevelEditor() {
     }
   }
 
+  async function publishLevel() {
+    setPublishing(true);
+    setPublishMsg("Publishing…");
+    window.localStorage.setItem("ac-author", author);
+    try {
+      const res = await fetch("/api/levels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: level.title,
+          chapter: level.chapter,
+          author: author || "anonymous",
+          data: level,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPublishMsg(json.error ?? "Publish failed.");
+        return;
+      }
+      setPublishedSlug(json.slug);
+      setEditToken(json.editToken);
+      // Remember the token so the same browser can update this level later.
+      try {
+        const map = JSON.parse(
+          window.localStorage.getItem("ac-edit-tokens") ?? "{}"
+        );
+        map[json.slug] = json.editToken;
+        window.localStorage.setItem("ac-edit-tokens", JSON.stringify(map));
+      } catch {
+        /* ignore */
+      }
+      setPublishMsg("Published!");
+    } catch {
+      setPublishMsg("Network error.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function updateLevel() {
+    if (!publishedSlug || !editToken) return;
+    setPublishing(true);
+    setPublishMsg("Updating…");
+    try {
+      const res = await fetch(`/api/levels/${publishedSlug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editToken,
+          title: level.title,
+          chapter: level.chapter,
+          data: level,
+        }),
+      });
+      const json = await res.json();
+      setPublishMsg(res.ok ? "Updated!" : json.error ?? "Update failed.");
+    } catch {
+      setPublishMsg("Network error.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   function doImport() {
     const res = parseLevel(importText);
     if (res.ok) {
@@ -303,6 +378,51 @@ export default function LevelEditor() {
               patchLadder={patchLadder}
               deleteSelected={deleteSelected}
             />
+          </div>
+
+          {/* Publish (community sharing) */}
+          <div className="border-t border-white/10 p-3 text-xs">
+            <div className="mb-1.5 font-semibold uppercase tracking-wider text-yellow-500/70">
+              Publish
+            </div>
+            <input
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="Your name (author)"
+              className="mb-2 w-full rounded border border-white/15 bg-black/30 px-2 py-1"
+            />
+            <div className="flex items-center gap-2">
+              <Btn onClick={publishLevel} accent>
+                {publishing ? "…" : "Publish to community"}
+              </Btn>
+              {publishedSlug && editToken && (
+                <Btn onClick={updateLevel}>Update</Btn>
+              )}
+            </div>
+            {publishMsg && (
+              <p
+                className={`mt-1.5 ${
+                  /fail|error|not configured/i.test(publishMsg)
+                    ? "text-red-400"
+                    : "text-emerald-400"
+                }`}
+              >
+                {publishMsg}
+              </p>
+            )}
+            {publishedSlug && (
+              <p className="mt-1 break-all text-white/50">
+                Share:{" "}
+                <a
+                  className="text-sky-400 underline"
+                  href={`/play?level=${publishedSlug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  /play?level={publishedSlug}
+                </a>
+              </p>
+            )}
           </div>
 
           {/* Export / Import */}

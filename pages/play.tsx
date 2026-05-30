@@ -1,16 +1,47 @@
 import Head from "next/head";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { chapter01 } from "@/lib/levels";
+import type { LevelDef } from "@/lib/levels/types";
 
 // Canvas + window access — client-only.
 const Platformer = dynamic(() => import("@/components/game/Platformer"), {
   ssr: false,
 });
 
-const ACTIVE_LEVEL = chapter01;
-
 export default function Play() {
+  const router = useRouter();
+  const [level, setLevel] = useState<LevelDef>(chapter01);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // When ?level=<slug> is present, load that community level.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const slug = router.query.level;
+    if (typeof slug !== "string" || !slug) {
+      setLevel(chapter01);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    fetch(`/api/levels/${slug}?play=1`)
+      .then(async (r) => {
+        const json = await r.json();
+        if (!r.ok) throw new Error(json.error ?? "Failed to load level.");
+        return json;
+      })
+      .then((json) => setLevel(json.level.data as LevelDef))
+      .catch((e) => setLoadError(e.message))
+      .finally(() => setLoading(false));
+  }, [router.isReady, router.query.level]);
+
+  const ACTIVE_LEVEL = level;
+  const levelKey =
+    typeof router.query.level === "string" ? router.query.level : level.id;
+
   return (
     <>
       <Head>
@@ -44,10 +75,28 @@ export default function Play() {
           className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/90"
         />
 
-        {/* Game canvas */}
+        {/* Game canvas — keyed so it remounts when the level changes */}
         <div className="absolute inset-0">
-          <Platformer level={ACTIVE_LEVEL} />
+          <Platformer key={levelKey} level={ACTIVE_LEVEL} />
         </div>
+
+        {/* Load state for community levels */}
+        {loading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 text-xs uppercase tracking-[4px] text-white/70">
+            Loading level…
+          </div>
+        )}
+        {loadError && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/80 text-center">
+            <p className="text-sm text-red-300">{loadError}</p>
+            <Link
+              href="/levels"
+              className="rounded border border-white/25 px-4 py-2 text-[11px] uppercase tracking-[3px] text-white/80 hover:bg-white/10"
+            >
+              ← Community Levels
+            </Link>
+          </div>
+        )}
 
         {/* Back to menu */}
         <Link

@@ -61,6 +61,12 @@ export default function Menu() {
               Start
             </Link>
             <Link
+              href="/levels"
+              className="w-56 rounded border border-white/25 px-6 py-3 text-center text-sm font-semibold uppercase tracking-[4px] text-white/80 transition hover:bg-white/10 hover:text-white"
+            >
+              Community Levels
+            </Link>
+            <Link
               href="/editor"
               className="w-56 rounded border border-white/25 px-6 py-3 text-center text-sm font-semibold uppercase tracking-[4px] text-white/80 transition hover:bg-white/10 hover:text-white"
             >
