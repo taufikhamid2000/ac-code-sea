@@ -10,6 +10,9 @@ import {
   type EnemyState,
   type TemplarGuardState,
   type TemplarKnightState,
+  GUARD_ATTACK_RANGE,
+  GUARD_ATTACK_DAMAGE,
+  GUARD_ATTACK_COOLDOWN,
   applyPlayerStrike,
   findStealthKillTarget,
   isInVisionCone,
@@ -711,9 +714,10 @@ export class LevelScene extends Phaser.Scene {
     // Hit-spark particles
     this.updateHitSparks(dtMs);
 
-    // Enemy AI
+    // Enemy AI — while alerted, enemies pursue the player.
+    const tickCtx = { alerted: this.alerted, playerX: this.player.x };
     for (let i = 0; i < this.enemyStates.length; i++) {
-      tickEnemy(this.enemyStates[i], this.levelDef.enemies[i]);
+      tickEnemy(this.enemyStates[i], this.levelDef.enemies[i], tickCtx);
     }
 
     // Hiding in a bush blocks vision entirely and drains alert faster.
@@ -757,6 +761,16 @@ export class LevelScene extends Phaser.Scene {
           knightStrikeHits({ x: this.player.x }, s, d)
         ) {
           this.applyPlayerDamage(d.damage);
+        }
+      } else if (s.kind === "templar-guard" && this.alerted && !s.dead) {
+        // Alerted guards attack on a cooldown when they reach the player.
+        if (
+          s.attackCooldown <= 0 &&
+          this.isSameMeleeLevel(s.dy) &&
+          Math.abs(this.player.x - s.x) <= GUARD_ATTACK_RANGE
+        ) {
+          this.applyPlayerDamage(GUARD_ATTACK_DAMAGE);
+          s.attackCooldown = GUARD_ATTACK_COOLDOWN;
         }
       }
     }

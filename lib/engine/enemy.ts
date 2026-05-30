@@ -37,6 +37,14 @@ export type TemplarGuardState = EnemyStateBase & {
   kind: "templar-guard";
   /** Frames remaining in the pause-at-patrol-endpoint */
   pauseFrames: number;
+  /** Frames until this guard can land another attack while chasing. */
+  attackCooldown: number;
+};
+
+/** Per-frame context for enemy AI. When alerted, enemies pursue. */
+export type TickContext = {
+  alerted: boolean;
+  playerX: number;
 };
 
 export type CombatPhase =
@@ -74,6 +82,18 @@ export const STEALTH_KILL_Y_TOLERANCE = 30;
 export const AIR_KILL_RANGE = 42;
 export const AIR_KILL_MIN_HEIGHT = 35;
 
+// ===== Pursuit (while alerted) =====
+/** Guard chase speed as a multiple of its patrol speed. */
+const GUARD_CHASE_SPEED_MULT = 1.9;
+/** Distance at which a chasing guard stops to attack. */
+export const GUARD_ATTACK_RANGE = 48;
+/** Damage a guard's attack deals to the player. */
+export const GUARD_ATTACK_DAMAGE = 1;
+/** Frames between a chasing guard's attacks. */
+export const GUARD_ATTACK_COOLDOWN = 48;
+/** Knight movement speed (pixels/frame) while chasing. */
+const KNIGHT_CHASE_SPEED = 2.4;
+
 export type StealthKillKind = "ground" | "air";
 export type StealthKillTarget = {
   enemyIdx: number;
@@ -96,6 +116,7 @@ function spawnTemplarGuard(def: TemplarGuardDef): TemplarGuardState {
     dy: def.dy ?? 0,
     facing: def.startFacing,
     pauseFrames: 0,
+    attackCooldown: 0,
     animTime: 0,
     dead: false,
     deathTimer: 0,
@@ -119,15 +140,21 @@ function spawnTemplarKnight(def: TemplarKnightDef): TemplarKnightState {
 
 // ===== Tick =====
 
-export function tickEnemy(state: EnemyState, def: EnemyDef): void {
+export function tickEnemy(
+  state: EnemyState,
+  def: EnemyDef,
+  ctx?: TickContext
+): void {
   if (state.dead) {
     state.deathTimer++;
     return;
   }
   if (state.kind === "templar-guard" && def.kind === "templar-guard") {
-    tickTemplarGuard(state, def);
+    if (state.attackCooldown > 0) state.attackCooldown--;
+    if (ctx?.alerted) tickGuardChase(state, def, ctx.playerX);
+    else tickTemplarGuard(state, def);
   } else if (state.kind === "templar-knight" && def.kind === "templar-knight") {
-    tickTemplarKnight(state, def);
+    tickTemplarKnight(state, def, ctx);
   }
 }
 
@@ -151,13 +178,56 @@ function tickTemplarGuard(s: TemplarGuardState, d: TemplarGuardDef): void {
 }
 
 /**
+ * Alerted guard: abandon the patrol and run toward the player. Stops at
+ * GUARD_ATTACK_RANGE so the scene can apply attack damage. Patrol resumes
+ * automatically once the alert clears (the guard heads back to its lane).
+ */
+function tickGuardChase(
+  s: TemplarGuardState,
+  d: TemplarGuardDef,
+  playerX: number
+): void {
+  s.pauseFrames = 0;
+  const dx = playerX - s.x;
+  s.facing = dx >= 0 ? 1 : -1;
+  if (Math.abs(dx) > GUARD_ATTACK_RANGE) {
+    s.x += d.speed * GUARD_CHASE_SPEED_MULT * s.facing;
+    s.animTime += 0.22;
+  } else {
+    // In range — hold position and let the attack cadence run.
+    s.animTime += 0.1;
+  }
+}
+
+/**
  * Advance the combat phase machine: idle → telegraph → striking →
  * recovery → idle. Stunned interrupts and replaces the current cycle.
  *
  * Damage application (when in `striking` and player is in range) is
  * handled by the scene — this function just advances phases.
  */
-function tickTemplarKnight(s: TemplarKnightState, d: TemplarKnightDef): void {
+function tickTemplarKnight(
+  s: TemplarKnightState,
+  d: TemplarKnightDef,
+  ctx?: TickContext
+): void {
+  // Alerted: stride toward the player until in melee range, holding the
+  // combat machine in idle so it doesn't swing at empty air. Stunned
+  // knights stay rooted (they're recovering from a parry).
+  if (ctx?.alerted && s.combatPhase !== "stunned") {
+    const dx = ctx.playerX - s.x;
+    if (Math.abs(dx) > d.attackRange) {
+      s.facing = dx >= 0 ? 1 : -1;
+      s.x += KNIGHT_CHASE_SPEED * s.facing;
+      s.animTime += 0.2;
+      s.combatPhase = "idle";
+      s.combatPhaseFrame = 0;
+      return;
+    }
+    // In range — face the player, then fall through to the attack cycle.
+    s.facing = dx >= 0 ? 1 : -1;
+  }
+
   s.combatPhaseFrame++;
   s.animTime += 0.12;
 
