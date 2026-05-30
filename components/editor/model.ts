@@ -5,6 +5,7 @@ export type Selection =
   | { type: "enemy"; index: number }
   | { type: "npc"; index: number }
   | { type: "bush"; index: number }
+  | { type: "ladder"; index: number }
   | { type: "spawn" }
   | { type: "endTrigger" }
   | null;

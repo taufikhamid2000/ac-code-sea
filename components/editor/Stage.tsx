@@ -5,6 +5,7 @@ import type {
   PlatformDef,
   NpcDef,
   BushDef,
+  LadderDef,
 } from "@/lib/levels/types";
 import { GROUND_Y, STAGE_WORLD_HEIGHT, snap, type Selection } from "./model";
 import { enemyAnchorX } from "./io";
@@ -19,6 +20,7 @@ type Props = {
   patchEnemy: (i: number, patch: Partial<EnemyDef>) => void;
   patchNpc: (i: number, patch: Partial<NpcDef>) => void;
   patchBush: (i: number, patch: Partial<BushDef>) => void;
+  patchLadder: (i: number, patch: Partial<LadderDef>) => void;
   patchLevel: (patch: Partial<LevelDef>) => void;
 };
 
@@ -37,6 +39,9 @@ type Drag =
   | { kind: "bush-move"; i: number; ox: number; ody: number }
   | { kind: "bush-w"; i: number; ow: number }
   | { kind: "bush-h"; i: number; oh: number }
+  | { kind: "ladder-move"; i: number; ox: number; ody: number }
+  | { kind: "ladder-w"; i: number; ow: number }
+  | { kind: "ladder-h"; i: number; oh: number }
   | { kind: "spawn" }
   | { kind: "end" };
 
@@ -50,6 +55,7 @@ export default function Stage({
   patchEnemy,
   patchNpc,
   patchBush,
+  patchLadder,
   patchLevel,
 }: Props) {
   const drag = useRef<{ d: Drag; startX: number; startY: number } | null>(null);
@@ -116,6 +122,18 @@ export default function Stage({
           // Top handle: dragging up (negative dyWorld) grows the bush.
           patchBush(d.i, { h: Math.max(24, g(d.oh - dyWorld)) });
           break;
+        case "ladder-move": {
+          const nx = Math.max(0, g(d.ox + dxWorld));
+          const ndy = Math.max(0, g(d.ody - dyWorld));
+          patchLadder(d.i, { x: nx, dy: ndy });
+          break;
+        }
+        case "ladder-w":
+          patchLadder(d.i, { w: Math.max(16, g(d.ow + dxWorld)) });
+          break;
+        case "ladder-h":
+          patchLadder(d.i, { h: Math.max(40, g(d.oh - dyWorld)) });
+          break;
         case "guard-min":
           patchEnemy(d.i, { patrolMinX: Math.max(0, g(d.omin + dxWorld)) });
           break;
@@ -149,6 +167,7 @@ export default function Stage({
     patchEnemy,
     patchNpc,
     patchBush,
+    patchLadder,
     patchLevel,
   ]);
 
@@ -202,6 +221,52 @@ export default function Stage({
             ) : null
           )}
         </svg>
+
+        {/* Ladders */}
+        {(level.ladders ?? []).map((l, i) => {
+          const sel = selection?.type === "ladder" && selection.index === i;
+          const ldy = l.dy ?? 0;
+          return (
+            <div
+              key={i}
+              onPointerDown={(e) => {
+                onSelect({ type: "ladder", index: i });
+                startDrag(e, { kind: "ladder-move", i, ox: l.x, ody: ldy });
+              }}
+              title="ladder"
+              className={`absolute cursor-move border ${
+                sel
+                  ? "border-yellow-400 bg-amber-500/30"
+                  : "border-amber-600/70 bg-amber-700/25"
+              }`}
+              style={{
+                left: sx(l.x),
+                top: groundScreenY - sy(ldy) - sy(l.h),
+                width: sx(l.w),
+                height: sy(l.h),
+                backgroundImage:
+                  "repeating-linear-gradient(to bottom, transparent 0, transparent 8px, rgba(217,160,90,0.6) 8px, rgba(217,160,90,0.6) 11px)",
+              }}
+            >
+              {sel && (
+                <>
+                  <Handle
+                    pos="right"
+                    onPointerDown={(e) =>
+                      startDrag(e, { kind: "ladder-w", i, ow: l.w })
+                    }
+                  />
+                  <Handle
+                    pos="top"
+                    onPointerDown={(e) =>
+                      startDrag(e, { kind: "ladder-h", i, oh: l.h })
+                    }
+                  />
+                </>
+              )}
+            </div>
+          );
+        })}
 
         {/* Bushes (hiding spots) */}
         {(level.bushes ?? []).map((b, i) => {

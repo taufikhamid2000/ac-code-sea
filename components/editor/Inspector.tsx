@@ -5,6 +5,7 @@ import type {
   NpcDef,
   NpcRole,
   BushDef,
+  LadderDef,
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
@@ -18,6 +19,7 @@ type Props = {
   patchEnemy: (i: number, patch: Partial<EnemyDef>) => void;
   patchNpc: (i: number, patch: Partial<NpcDef>) => void;
   patchBush: (i: number, patch: Partial<BushDef>) => void;
+  patchLadder: (i: number, patch: Partial<LadderDef>) => void;
   deleteSelected: () => void;
 };
 
@@ -29,6 +31,7 @@ export default function Inspector({
   patchEnemy,
   patchNpc,
   patchBush,
+  patchLadder,
   deleteSelected,
 }: Props) {
   return (
@@ -137,6 +140,25 @@ export default function Inspector({
                 <NumRow label="dy (base)" value={b.dy ?? 0} onChange={(v) => set({ dy: v })} />
                 <NumRow label="w" value={b.w} onChange={(v) => set({ w: v })} />
                 <NumRow label="h" value={b.h ?? 72} onChange={(v) => set({ h: v })} />
+                <DeleteBtn onClick={deleteSelected} />
+              </>
+            );
+          })()}
+
+        {selection?.type === "ladder" &&
+          (() => {
+            const la = (level.ladders ?? [])[selection.index];
+            if (!la) return null;
+            const set = (patch: Partial<LadderDef>) =>
+              patchLadder(selection.index, patch);
+            return (
+              <>
+                <Head>Ladder #{selection.index}</Head>
+                <p className="text-white/40">Climb with up/down; jump off with space.</p>
+                <NumRow label="x" value={la.x} onChange={(v) => set({ x: v })} />
+                <NumRow label="dy (base)" value={la.dy ?? 0} onChange={(v) => set({ dy: v })} />
+                <NumRow label="w" value={la.w} onChange={(v) => set({ w: v })} />
+                <NumRow label="h" value={la.h} onChange={(v) => set({ h: v })} />
                 <DeleteBtn onClick={deleteSelected} />
               </>
             );

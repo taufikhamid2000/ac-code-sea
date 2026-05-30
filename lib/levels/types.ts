@@ -35,6 +35,24 @@ export type BushDef = {
   h?: number;
 };
 
+// ===== Ladders =====
+
+/**
+ * A climbable ladder. While the player overlaps it and holds up/down,
+ * they climb (gravity off) between the base and the top — pair it with an
+ * elevated platform to build vertical routes.
+ */
+export type LadderDef = {
+  /** World-space x of the ladder's left edge */
+  x: number;
+  /** Pixels above the ground line the ladder's base sits at (0 = ground) */
+  dy?: number;
+  /** Width of the climb zone in pixels */
+  w: number;
+  /** Height of the ladder in pixels */
+  h: number;
+};
+
 // ===== Enemies =====
 
 type EnemyDefBase = {
@@ -168,4 +186,6 @@ export type LevelDef = {
   npcs?: NpcDef[];
   /** Hiding spots that block vision and drain the alert meter faster. */
   bushes?: BushDef[];
+  /** Climbable ladders for vertical movement. */
+  ladders?: LadderDef[];
 };

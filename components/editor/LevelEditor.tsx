@@ -6,6 +6,7 @@ import type {
   EnemyDef,
   NpcDef,
   BushDef,
+  LadderDef,
 } from "@/lib/levels/types";
 import { chapter01 } from "@/lib/levels";
 import type { Selection } from "./model";
@@ -19,6 +20,7 @@ import {
   defaultGuard,
   defaultNpc,
   defaultBush,
+  defaultLadder,
 } from "./io";
 
 const Platformer = dynamic(() => import("@/components/game/Platformer"), {
@@ -86,6 +88,13 @@ export default function LevelEditor() {
       ...l,
       bushes: (l.bushes ?? []).map((b, j) => (j === i ? { ...b, ...patch } : b)),
     }));
+  const patchLadder = (i: number, patch: Partial<LadderDef>) =>
+    setLevel((l) => ({
+      ...l,
+      ladders: (l.ladders ?? []).map((la, j) =>
+        j === i ? { ...la, ...patch } : la
+      ),
+    }));
 
   function addPlatform() {
     const x = Math.round(level.worldWidth / 3);
@@ -107,6 +116,11 @@ export default function LevelEditor() {
     const x = Math.round(level.worldWidth / 3);
     setLevel((l) => ({ ...l, bushes: [...(l.bushes ?? []), defaultBush(x)] }));
     setSelection({ type: "bush", index: (level.bushes ?? []).length });
+  }
+  function addLadder() {
+    const x = Math.round(level.worldWidth / 3);
+    setLevel((l) => ({ ...l, ladders: [...(l.ladders ?? []), defaultLadder(x)] }));
+    setSelection({ type: "ladder", index: (level.ladders ?? []).length });
   }
   function deleteSelected() {
     if (!selection) return;
@@ -132,6 +146,13 @@ export default function LevelEditor() {
         bushes: (l.bushes ?? []).filter((_, j) => j !== i),
       }));
       setSelection(null);
+    } else if (selection.type === "ladder") {
+      const i = selection.index;
+      setLevel((l) => ({
+        ...l,
+        ladders: (l.ladders ?? []).filter((_, j) => j !== i),
+      }));
+      setSelection(null);
     }
   }
 
@@ -149,7 +170,8 @@ export default function LevelEditor() {
         selection?.type === "platform" ||
         selection?.type === "enemy" ||
         selection?.type === "npc" ||
-        selection?.type === "bush"
+        selection?.type === "bush" ||
+        selection?.type === "ladder"
       ) {
         e.preventDefault();
         deleteSelected();
@@ -216,6 +238,7 @@ export default function LevelEditor() {
         <Btn onClick={() => addEnemy("templar-guard")}>+ Guard</Btn>
         <Btn onClick={addNpc}>+ NPC</Btn>
         <Btn onClick={addBush}>+ Bush</Btn>
+        <Btn onClick={addLadder}>+ Ladder</Btn>
         <Sep />
         <Btn onClick={() => setScale((s) => Math.max(0.2, +(s - 0.1).toFixed(2)))}>
           −
@@ -261,6 +284,7 @@ export default function LevelEditor() {
             patchEnemy={patchEnemy}
             patchNpc={patchNpc}
             patchBush={patchBush}
+            patchLadder={patchLadder}
             patchLevel={patchLevel}
           />
         </div>
@@ -276,6 +300,7 @@ export default function LevelEditor() {
               patchEnemy={patchEnemy}
               patchNpc={patchNpc}
               patchBush={patchBush}
+              patchLadder={patchLadder}
               deleteSelected={deleteSelected}
             />
           </div>

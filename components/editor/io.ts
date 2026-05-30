@@ -4,6 +4,7 @@ import type {
   EnemyDef,
   NpcDef,
   BushDef,
+  LadderDef,
   TemplarGuardDef,
   TemplarKnightDef,
 } from "@/lib/levels/types";
@@ -37,6 +38,10 @@ export function defaultPlatform(x: number): PlatformDef {
 
 export function defaultBush(x: number): BushDef {
   return { x: Math.round(x), dy: 0, w: 130, h: 72 };
+}
+
+export function defaultLadder(x: number): LadderDef {
+  return { x: Math.round(x), dy: 0, w: 30, h: 160 };
 }
 
 export function defaultKnight(x: number): TemplarKnightDef {
@@ -203,6 +208,14 @@ function validateLevel(v: unknown): string | null {
       const o = b as Record<string, unknown>;
       if (typeof o?.x !== "number" || typeof o?.w !== "number")
         return "Each bush needs numeric x and w.";
+    }
+  }
+  if (l.ladders !== undefined) {
+    if (!Array.isArray(l.ladders)) return '"ladders" must be an array.';
+    for (const la of l.ladders as unknown[]) {
+      const o = la as Record<string, unknown>;
+      if (typeof o?.x !== "number" || typeof o?.w !== "number" || typeof o?.h !== "number")
+        return "Each ladder needs numeric x, w, and h.";
     }
   }
   return null;

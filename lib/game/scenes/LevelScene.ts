@@ -74,6 +74,9 @@ const ALERT_CLEAR = 4; // drop out of "alerted" once it drains to here
 // Default bush height when a BushDef omits `h`.
 const BUSH_DEFAULT_H = 72;
 
+// Vertical climb speed on a ladder (pixels/sec).
+const CLIMB_SPEED = 220;
+
 const FADE_MS = 500;
 const MAX_PLAYER_HP = 3;
 const NARRATION_MS = 6000;
@@ -126,6 +129,11 @@ export class LevelScene extends Phaser.Scene {
   // Bushes (hiding spots)
   private bushFx!: Phaser.GameObjects.Graphics;
   private playerHidden = false;
+
+  // Ladders (climbing)
+  private ladderFx!: Phaser.GameObjects.Graphics;
+  private climbing = false;
+  private platformCollider!: Phaser.Physics.Arcade.Collider;
 
   // NPCs (passive: set dressing, dialogue, rescue beats)
   private npcRuntimes: Array<{ def: NpcDef; triggered: boolean }> = [];
@@ -195,9 +203,13 @@ export class LevelScene extends Phaser.Scene {
     this.buildPlatforms();
     this.buildEndMarker();
     this.buildPlayer();
-    this.physics.add.collider(this.player, this.staticBodies);
+    this.platformCollider = this.physics.add.collider(
+      this.player,
+      this.staticBodies
+    );
 
     this.buildEnemies();
+    this.buildLadders();
     this.buildBushes();
     this.buildNpcs();
     this.buildOverlays();
@@ -352,6 +364,50 @@ export class LevelScene extends Phaser.Scene {
       // A lighter canopy band on top for a bit of shape.
       g.fillStyle(0x1f5c2c, baseAlpha);
       g.fillRect(r.left, r.top, w, Math.min(14, h));
+    }
+  }
+
+  private buildLadders() {
+    // Drawn behind the player so they read as background structure.
+    this.ladderFx = this.add.graphics().setDepth(-1);
+    this.redrawLadders();
+  }
+
+  /** World-space rect for a ladder (left, top, right, bottom). */
+  private ladderRect(l: { x: number; w: number; h: number; dy?: number }) {
+    const dy = l.dy ?? 0;
+    const bottom = this.groundY - dy;
+    return { left: l.x, right: l.x + l.w, top: bottom - l.h, bottom };
+  }
+
+  /** The ladder the player currently overlaps, or null. */
+  private activeLadder() {
+    const px = this.player.x;
+    const py = this.player.y;
+    for (const l of this.levelDef.ladders ?? []) {
+      const r = this.ladderRect(l);
+      if (px >= r.left && px <= r.right && py >= r.top - 12 && py <= r.bottom + 8) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  private redrawLadders() {
+    const g = this.ladderFx;
+    g.clear();
+    for (const l of this.levelDef.ladders ?? []) {
+      const r = this.ladderRect(l);
+      const w = r.right - r.left;
+      const h = r.bottom - r.top;
+      // Rails
+      g.fillStyle(0x6b4a2a, 0.95);
+      g.fillRect(r.left, r.top, 4, h);
+      g.fillRect(r.right - 4, r.top, 4, h);
+      // Rungs every 18px
+      for (let y = r.top + 8; y < r.bottom; y += 18) {
+        g.fillRect(r.left, y, w, 4);
+      }
     }
   }
 
@@ -675,7 +731,15 @@ export class LevelScene extends Phaser.Scene {
     const grounded = this.player.body.blocked.down;
     const dtMs = this.game.loop.delta;
 
-    this.playerCrouching = this.keys.s.isDown && grounded;
+    // Ladder climbing. Holding up/down while overlapping a ladder enters
+    // climb mode: gravity off, pass through platforms, move vertically.
+    const onLadder = this.activeLadder() !== null;
+    if (onLadder && (this.keys.w.isDown || this.keys.s.isDown)) {
+      this.climbing = true;
+    }
+    if (!onLadder) this.climbing = false;
+
+    this.playerCrouching = this.keys.s.isDown && grounded && !this.climbing;
 
     if (this.playerCrouching) {
       this.player.body.setVelocityX(0);
@@ -689,13 +753,34 @@ export class LevelScene extends Phaser.Scene {
       this.player.body.setVelocityX(0);
     }
 
-    if (
-      (this.keys.space.isDown || this.keys.w.isDown) &&
-      grounded &&
-      !this.playerCrouching
-    ) {
-      this.player.body.setVelocityY(JUMP_VEL_Y);
-      this.audio?.playJump();
+    if (this.climbing) {
+      this.player.body.setAllowGravity(false);
+      this.platformCollider.active = false;
+      const vy = this.keys.w.isDown
+        ? -CLIMB_SPEED
+        : this.keys.s.isDown
+        ? CLIMB_SPEED
+        : 0;
+      this.player.body.setVelocityY(vy);
+      // Jump off the ladder with space.
+      if (this.keys.space.isDown) {
+        this.climbing = false;
+        this.player.body.setAllowGravity(true);
+        this.platformCollider.active = true;
+        this.player.body.setVelocityY(JUMP_VEL_Y);
+        this.audio?.playJump();
+      }
+    } else {
+      this.player.body.setAllowGravity(true);
+      this.platformCollider.active = true;
+      if (
+        (this.keys.space.isDown || this.keys.w.isDown) &&
+        grounded &&
+        !this.playerCrouching
+      ) {
+        this.player.body.setVelocityY(JUMP_VEL_Y);
+        this.audio?.playJump();
+      }
     }
 
     // Landing — wasGrounded false → grounded true
@@ -1090,6 +1175,9 @@ export class LevelScene extends Phaser.Scene {
       this.groundY - P_HALF_H
     );
     this.player.body.setVelocity(0, 0);
+    this.player.body.setAllowGravity(true);
+    this.platformCollider.active = true;
+    this.climbing = false;
     this.playerFacing = 1;
     this.playerCrouching = false;
     this.playerAnimTime = 0;
