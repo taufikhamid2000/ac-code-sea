@@ -23,6 +23,7 @@ import {
   tryParry,
 } from "@/lib/engine/enemy";
 import { GameAudio } from "@/lib/game/audio";
+import { touchControls } from "@/lib/game/touchControls";
 
 /**
  * The level scene. One scene runs a single LevelDef end-to-end.
@@ -755,6 +756,12 @@ export class LevelScene extends Phaser.Scene {
       this.slowMoEndAt = 0;
     }
 
+    // Touch action button is edge-triggered — consume it like a keypress.
+    if (touchControls.actionPressed) {
+      touchControls.actionPressed = false;
+      this.handleActionKey();
+    }
+
     if (this.phase === "playing") this.updatePlaying();
     // Sparks fade even outside playing (so kill sparks finish during slow-mo)
     if (this.phase !== "playing") {
@@ -764,7 +771,14 @@ export class LevelScene extends Phaser.Scene {
   }
 
   private updatePlaying() {
-    const sprinting = this.keys.shift.isDown;
+    // Merge keyboard + on-screen touch controls.
+    const leftDown = this.keys.a.isDown || touchControls.left;
+    const rightDown = this.keys.d.isDown || touchControls.right;
+    const upDown = this.keys.w.isDown || touchControls.up;
+    const downDown = this.keys.s.isDown || touchControls.down;
+    const jumpDown = this.keys.space.isDown || upDown;
+
+    const sprinting = this.keys.shift.isDown || touchControls.sprint;
     const speed = sprinting ? RUN_SPEED : WALK_SPEED;
     const grounded = this.player.body.blocked.down;
     const dtMs = this.game.loop.delta;
@@ -772,19 +786,19 @@ export class LevelScene extends Phaser.Scene {
     // Ladder climbing. Holding up/down while overlapping a ladder enters
     // climb mode: gravity off, pass through platforms, move vertically.
     const onLadder = this.activeLadder() !== null;
-    if (onLadder && (this.keys.w.isDown || this.keys.s.isDown)) {
+    if (onLadder && (upDown || downDown)) {
       this.climbing = true;
     }
     if (!onLadder) this.climbing = false;
 
-    this.playerCrouching = this.keys.s.isDown && grounded && !this.climbing;
+    this.playerCrouching = downDown && grounded && !this.climbing;
 
     if (this.playerCrouching) {
       this.player.body.setVelocityX(0);
-    } else if (this.keys.a.isDown && !this.keys.d.isDown) {
+    } else if (leftDown && !rightDown) {
       this.player.body.setVelocityX(-speed);
       this.playerFacing = -1;
-    } else if (this.keys.d.isDown && !this.keys.a.isDown) {
+    } else if (rightDown && !leftDown) {
       this.player.body.setVelocityX(speed);
       this.playerFacing = 1;
     } else {
@@ -794,11 +808,7 @@ export class LevelScene extends Phaser.Scene {
     if (this.climbing) {
       this.player.body.setAllowGravity(false);
       this.platformCollider.active = false;
-      const vy = this.keys.w.isDown
-        ? -CLIMB_SPEED
-        : this.keys.s.isDown
-        ? CLIMB_SPEED
-        : 0;
+      const vy = upDown ? -CLIMB_SPEED : downDown ? CLIMB_SPEED : 0;
       this.player.body.setVelocityY(vy);
       // Jump off the ladder with space.
       if (this.keys.space.isDown) {
@@ -811,11 +821,7 @@ export class LevelScene extends Phaser.Scene {
     } else {
       this.player.body.setAllowGravity(true);
       this.platformCollider.active = true;
-      if (
-        (this.keys.space.isDown || this.keys.w.isDown) &&
-        grounded &&
-        !this.playerCrouching
-      ) {
+      if (jumpDown && grounded && !this.playerCrouching) {
         this.player.body.setVelocityY(JUMP_VEL_Y);
         this.audio?.playJump();
       }

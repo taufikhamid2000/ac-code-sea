@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { LevelDef } from "@/lib/levels";
+import TouchControls from "./TouchControls";
 
 type Props = {
   level: LevelDef;
@@ -55,9 +56,12 @@ export default function Platformer({ level }: Props) {
   }, [level]);
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute inset-0 [&>canvas]:!block [&>canvas]:!h-full [&>canvas]:!w-full"
-    />
+    <>
+      <div
+        ref={containerRef}
+        className="absolute inset-0 [&>canvas]:!block [&>canvas]:!h-full [&>canvas]:!w-full"
+      />
+      <TouchControls />
+    </>
   );
 }
