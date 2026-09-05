@@ -2,6 +2,8 @@
 
 A browser-playable 2D side-scroller, in the spirit of AC Chronicles. The Brotherhood, in pre-colonial Southeast Asia.
 
+**Live demo:** https://ac-code-sea.vercel.app
+
 No install. No signup. Open the URL, the level loads, you play.
 
 ## Current state — Chapter I prototype
@@ -28,7 +30,12 @@ Two enemy kinds shipped:
 - Next.js 13 (pages router)
 - **Phaser 3** for rendering, physics, scenes, camera, input. Loaded lazily so the initial HTML stays small.
 - Tailwind for the page chrome (title chip, control HUD)
+- **Framer Motion** and **react-icons** for the non-game page chrome (menus, transitions, icon buttons)
 - Pure-TS engine module (`lib/engine/enemy.ts`) — Phaser-agnostic, portable to any renderer
+- **Supabase** (`lib/supabase/client.ts`, `supabase/migrations/`) for optional accounts and the
+  cloud level library: sign-in lets you publish levels you build in the in-browser level editor
+  (`components/editor/LevelEditor.tsx`) so others can browse and play them (see `lib/levels/cloud.ts`,
+  `pages/levels.tsx`, `pages/account.tsx`). Playing the shipped chapters needs none of this.
 
 ## Run
 
@@ -154,3 +161,6 @@ complete ──R pressed──────────────────�
 ## Non-goals
 
 Multiplayer. Saved games. Migrating off the browser. Anything that asks the player to commit before they play.
+
+---
+Built by [Muhammad Taufik](https://taufik.vercel.app)
