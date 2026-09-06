@@ -69,20 +69,20 @@ function SignedOut() {
   }
 
   return (
-    <div className="max-w-sm">
+    <div className="max-w-sm rounded-lg border border-white/10 bg-white/[0.03] p-6 animate-in fade-in">
       <div className="mb-4 flex gap-2 text-xs">
         <button
           onClick={() => setMode("in")}
-          className={`rounded px-3 py-1.5 uppercase tracking-[3px] ${
-            mode === "in" ? "bg-yellow-500/90 text-black" : "border border-white/20 text-white/70"
+          className={`rounded px-3 py-1.5 uppercase tracking-[3px] transition-colors ${
+            mode === "in" ? "bg-yellow-500/90 text-black" : "border border-white/20 text-white/70 hover:bg-white/10"
           }`}
         >
           Sign in
         </button>
         <button
           onClick={() => setMode("up")}
-          className={`rounded px-3 py-1.5 uppercase tracking-[3px] ${
-            mode === "up" ? "bg-yellow-500/90 text-black" : "border border-white/20 text-white/70"
+          className={`rounded px-3 py-1.5 uppercase tracking-[3px] transition-colors ${
+            mode === "up" ? "bg-yellow-500/90 text-black" : "border border-white/20 text-white/70 hover:bg-white/10"
           }`}
         >
           Sign up
@@ -95,19 +95,19 @@ function SignedOut() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
-          className="rounded border border-white/15 bg-black/30 px-3 py-2 text-sm"
+          className="rounded border border-white/15 bg-black/30 px-3 py-2 text-sm focus:outline focus:outline-2 focus:outline-yellow-500/60"
         />
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          className="rounded border border-white/15 bg-black/30 px-3 py-2 text-sm"
+          className="rounded border border-white/15 bg-black/30 px-3 py-2 text-sm focus:outline focus:outline-2 focus:outline-yellow-500/60"
         />
         <button
           onClick={submit}
           disabled={busy}
-          className="rounded bg-yellow-500/90 px-3 py-2 text-sm font-semibold uppercase tracking-[3px] text-black hover:bg-yellow-400 disabled:opacity-50"
+          className="rounded bg-yellow-500/90 px-3 py-2 text-sm font-semibold uppercase tracking-[3px] text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? "…" : mode === "up" ? "Create account" : "Sign in"}
         </button>
@@ -119,12 +119,24 @@ function SignedOut() {
 
       <button
         onClick={google}
-        className="flex w-full items-center justify-center gap-2 rounded border border-white/20 px-3 py-2 text-sm text-white/85 hover:bg-white/10"
+        className="flex w-full items-center justify-center gap-2 rounded border border-white/20 px-3 py-2 text-sm text-white/85 transition-colors hover:bg-white/10"
       >
         Continue with Google
       </button>
 
       {msg && <p className="mt-3 text-xs text-yellow-300">{msg}</p>}
+
+      <p className="mt-6 text-center text-[11px] text-white/30">
+        A project by{" "}
+        <a
+          href="https://taufik.vercel.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline-offset-2 hover:text-white/50 hover:underline"
+        >
+          Muhammad Taufik &rarr;
+        </a>
+      </p>
     </div>
   );
 }
