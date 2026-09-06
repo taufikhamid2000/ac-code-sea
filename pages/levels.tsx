@@ -3,8 +3,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { listPublished, type LevelSummary } from "@/lib/levels/cloud";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { useRequireUser } from "@/lib/auth/useRequireUser";
 
 export default function CommunityLevels() {
+  const { loading: gateLoading } = useRequireUser();
   const [levels, setLevels] = useState<LevelSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,6 +19,14 @@ export default function CommunityLevels() {
       .then(setLevels)
       .catch((e) => setError(e.message));
   }, []);
+
+  if (gateLoading) {
+    return (
+      <main className="flex h-[100dvh] w-full items-center justify-center bg-neutral-950 text-white/40">
+        <p className="text-xs uppercase tracking-[4px]">Loading…</p>
+      </main>
+    );
+  }
 
   return (
     <>

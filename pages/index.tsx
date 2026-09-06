@@ -1,12 +1,14 @@
 import Head from "next/head";
 import Link from "next/link";
 import { chapter01 } from "@/lib/levels";
-import { useUser, displayName } from "@/lib/auth/useUser";
+import { displayName } from "@/lib/auth/useUser";
+import { useRequireUser } from "@/lib/auth/useRequireUser";
 
 const BACKDROP = chapter01.backdrop;
 
 export default function Menu() {
-  const { user, loading } = useUser();
+  const { user, loading } = useRequireUser();
+  if (loading) return <Gate />;
   return (
     <>
       <Head>
@@ -78,11 +80,7 @@ export default function Menu() {
               href="/account"
               className="mt-1 text-[11px] uppercase tracking-[4px] text-white/45 transition hover:text-white/80"
             >
-              {loading
-                ? " "
-                : user
-                ? `${displayName(user)} · Account`
-                : "Sign in"}
+              {user ? `${displayName(user)} — Account` : "Sign in"}
             </Link>
           </div>
         </div>
@@ -93,5 +91,13 @@ export default function Menu() {
         </p>
       </main>
     </>
+  );
+}
+
+function Gate() {
+  return (
+    <main className="flex h-[100dvh] w-full items-center justify-center bg-black text-white/40">
+      <p className="text-xs uppercase tracking-[4px]">Loading…</p>
+    </main>
   );
 }

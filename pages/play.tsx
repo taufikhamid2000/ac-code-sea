@@ -6,6 +6,7 @@ import { useRouter } from "next/router";
 import { chapter01 } from "@/lib/levels";
 import type { LevelDef } from "@/lib/levels/types";
 import { loadBySlug } from "@/lib/levels/cloud";
+import { useRequireUser } from "@/lib/auth/useRequireUser";
 
 // Canvas + window access — client-only.
 const Platformer = dynamic(() => import("@/components/game/Platformer"), {
@@ -13,6 +14,7 @@ const Platformer = dynamic(() => import("@/components/game/Platformer"), {
 });
 
 export default function Play() {
+  const { loading: gateLoading } = useRequireUser();
   const router = useRouter();
   const [level, setLevel] = useState<LevelDef>(chapter01);
   const [loading, setLoading] = useState(false);
@@ -37,6 +39,14 @@ export default function Play() {
   const ACTIVE_LEVEL = level;
   const levelKey =
     typeof router.query.level === "string" ? router.query.level : level.id;
+
+  if (gateLoading) {
+    return (
+      <main className="flex h-[100dvh] w-full items-center justify-center bg-black text-white/40">
+        <p className="text-xs uppercase tracking-[4px]">Loading…</p>
+      </main>
+    );
+  }
 
   return (
     <>

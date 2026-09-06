@@ -5,6 +5,10 @@ import { getBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { useUser, displayName } from "@/lib/auth/useUser";
 import { listMine, deleteLevel, type LevelSummary } from "@/lib/levels/cloud";
 
+// The rest of the app (menu, play, editor, levels) redirects unauthenticated
+// visitors to /login — this page assumes it's normally only reachable
+// signed in. SignedOut below is just a fallback for the edge case of a
+// session expiring mid-visit.
 export default function Account() {
   const { user, loading } = useUser();
   const configured = isSupabaseConfigured();
@@ -33,110 +37,17 @@ export default function Account() {
 }
 
 function SignedOut() {
-  const [mode, setMode] = useState<"in" | "up">("in");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit() {
-    setBusy(true);
-    setMsg("");
-    const sb = getBrowserClient();
-    try {
-      if (mode === "up") {
-        const { error } = await sb.auth.signUp({ email, password });
-        if (error) throw error;
-        setMsg("Account created. Check your email to confirm, then sign in.");
-      } else {
-        const { error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      }
-    } catch (e) {
-      setMsg((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function google() {
-    const sb = getBrowserClient();
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/account` },
-    });
-    if (error) setMsg(error.message);
-  }
-
   return (
     <div className="max-w-sm rounded-lg border border-white/10 bg-white/[0.03] p-6 animate-in fade-in">
-      <div className="mb-4 flex gap-2 text-xs">
-        <button
-          onClick={() => setMode("in")}
-          className={`rounded px-3 py-1.5 uppercase tracking-[3px] transition-colors ${
-            mode === "in" ? "bg-yellow-500/90 text-black" : "border border-white/20 text-white/70 hover:bg-white/10"
-          }`}
-        >
-          Sign in
-        </button>
-        <button
-          onClick={() => setMode("up")}
-          className={`rounded px-3 py-1.5 uppercase tracking-[3px] transition-colors ${
-            mode === "up" ? "bg-yellow-500/90 text-black" : "border border-white/20 text-white/70 hover:bg-white/10"
-          }`}
-        >
-          Sign up
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          className="rounded border border-white/15 bg-black/30 px-3 py-2 text-sm focus:outline focus:outline-2 focus:outline-yellow-500/60"
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className="rounded border border-white/15 bg-black/30 px-3 py-2 text-sm focus:outline focus:outline-2 focus:outline-yellow-500/60"
-        />
-        <button
-          onClick={submit}
-          disabled={busy}
-          className="rounded bg-yellow-500/90 px-3 py-2 text-sm font-semibold uppercase tracking-[3px] text-black transition-colors hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? "…" : mode === "up" ? "Create account" : "Sign in"}
-        </button>
-      </div>
-
-      <div className="my-4 flex items-center gap-3 text-[10px] uppercase tracking-[3px] text-white/30">
-        <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
-      </div>
-
-      <button
-        onClick={google}
-        className="flex w-full items-center justify-center gap-2 rounded border border-white/20 px-3 py-2 text-sm text-white/85 transition-colors hover:bg-white/10"
-      >
-        Continue with Google
-      </button>
-
-      {msg && <p className="mt-3 text-xs text-yellow-300">{msg}</p>}
-
-      <p className="mt-6 text-center text-[11px] text-white/30">
-        A project by{" "}
-        <a
-          href="https://taufik.vercel.app"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline-offset-2 hover:text-white/50 hover:underline"
-        >
-          Muhammad Taufik &rarr;
-        </a>
+      <p className="mb-4 text-sm text-white/60">
+        Your session has ended. Sign in again to see your account.
       </p>
+      <Link
+        href="/login"
+        className="inline-block rounded bg-yellow-500/90 px-4 py-2 text-sm font-semibold uppercase tracking-[3px] text-black transition-colors hover:bg-yellow-400"
+      >
+        Sign in
+      </Link>
     </div>
   );
 }
