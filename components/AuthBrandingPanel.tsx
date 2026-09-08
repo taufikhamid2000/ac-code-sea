@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppLogoMark } from "@/components/AppLogoMark";
 
 /** Split-screen branding panel used by the standalone /login page. */
 export function AuthBrandingPanel() {
@@ -8,6 +9,7 @@ export function AuthBrandingPanel() {
       <div className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-yellow-500/10" />
 
       <Link href="/" className="relative flex items-center gap-2.5">
+        <AppLogoMark size={22} className="text-yellow-500/90" />
         <span className="text-xs font-medium uppercase tracking-[6px] text-white/70">
           AC · Code SEA
         </span>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { AuthBrandingPanel } from "@/components/AuthBrandingPanel";
+import { AppLogoMark } from "@/components/AppLogoMark";
 import { getBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { useUser } from "@/lib/auth/useUser";
 
@@ -75,6 +76,7 @@ export default function LoginPage() {
 
         <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-neutral-950 px-4 py-10">
           <Link href="/" className="flex items-center gap-2 md:hidden">
+            <AppLogoMark size={20} className="text-yellow-500/90" />
             <span className="text-sm font-medium uppercase tracking-[4px] text-white/70">
               AC · Code SEA
             </span>

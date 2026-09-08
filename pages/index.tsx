@@ -1,6 +1,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import { chapter01 } from "@/lib/levels";
+import { AppLogoMark } from "@/components/AppLogoMark";
 import { displayName } from "@/lib/auth/useUser";
 import { useRequireUser } from "@/lib/auth/useRequireUser";
 
@@ -44,7 +45,8 @@ export default function Menu() {
 
         {/* Title */}
         <div className="relative z-10 flex flex-col items-center text-center">
-          <p className="text-xs font-medium uppercase tracking-[10px] text-white/55">
+          <AppLogoMark size={44} className="text-yellow-500/90" />
+          <p className="mt-3 text-xs font-medium uppercase tracking-[10px] text-white/55">
             AC · Code SEA
           </p>
           <h1 className="mt-3 font-serif text-4xl tracking-wide text-white md:text-6xl">
