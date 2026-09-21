@@ -22,6 +22,7 @@ export function getBrowserClient(): SupabaseClient {
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
+      db: { schema: "codesea" },
     });
   }
   return client;
