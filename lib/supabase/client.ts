@@ -5,9 +5,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * Row-Level Security governs what each user can read/write. Singleton so
  * the auth session is shared across the app.
  */
-let client: SupabaseClient | null = null;
+let client: SupabaseClient<any, any, any> | null = null;
 
-export function getBrowserClient(): SupabaseClient {
+export function getBrowserClient(): SupabaseClient<any, any, any> {
   if (!client) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
